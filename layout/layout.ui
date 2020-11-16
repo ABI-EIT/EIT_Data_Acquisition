@@ -40,7 +40,7 @@
         <property name="whatsThis">
          <string/>
         </property>
-        <property name="placeholderText">
+        <property name="placeholderText" stdset="0">
          <string>Select Device</string>
         </property>
        </widget>
