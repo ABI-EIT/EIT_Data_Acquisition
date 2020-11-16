@@ -1,0 +1,26 @@
+{
+  "type": "JAC",
+  "electrodes": {
+    "number": 16,
+    "starting_angle": 3.14159,
+    "starting_offset": 0.5
+  },
+  "ex_mat": {
+    "type": "scan_lines",
+    "dist": 0.5
+  },
+  "setup": {
+    "p": 0.5,
+    "lamb": 0.4,
+    "method": "kotre"
+  },
+
+  "solve_type": "gn",
+  "solve_params": {
+    "lamb_decay" : 0.1,
+    "lamb_min" : 1e-5,
+    "maxiter" : 1
+  },
+  "normalize": false
+
+}
