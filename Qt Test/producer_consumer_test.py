@@ -4,7 +4,6 @@ import threading
 import time
 import queue
 
-title = "Qt Test"
 
 class MainWindow(QtWidgets.QMainWindow):
     def __init__(self):
@@ -161,7 +160,3 @@ if __name__ == "__main__":
     producer.work_status.connect(lambda status: main_window.switch_to_start() if status is False else main_window.switch_to_stop())
 
     app.exec()
-
-
-
-

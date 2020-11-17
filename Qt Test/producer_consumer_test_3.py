@@ -69,13 +69,13 @@ class Worker(QtCore.QObject):
     def send_state(self):
         self.state_signal.emit(self.state)
 
-    def start_new(self, *args):
+    def start_new(self, on_start_args, work_args, on_stopped_args):
         if self.worker_thread is not None:
             self.set_stop()
             while self.worker_therad.is_alive():
                 time.sleep(0)
         self.state = "Started"
-        self.worker_thread = threading.Thread(target=self.work, args=args, daemon=True).start()
+        self.worker_thread = threading.Thread(target=self.work, args=(on_start_args, work_args, on_stopped_args), daemon=True).start()
         # start monitor thread
 
     # def state broadcast (abstract)
@@ -83,6 +83,14 @@ class Worker(QtCore.QObject):
     @abstractmethod
     def work(self, *args):  # Maybe this shouldn't be abstract as we always need to send status
         pass                # but we need an abstract function within it
+
+    @abstractmethod
+    def on_start(self, *args):
+        pass
+
+    @abstractmethod
+    def on_stopped(self, *args):
+        pass
 
 
 class Producer(Worker):
@@ -95,21 +103,19 @@ class Producer(Worker):
     def add_subscriber(self, queue):
         self.queues.append(queue)
 
-    def work(self, *args):  # But how do we do setup and teardown (eg connect to device, close file...) Using a generator?? Or using setup and teardown functions?
+    def work(self, on_start_args, work_args, on_stopped_args):
         self.send_state()
-        work_generator = self.producer_work(*args)
-        while self.state != "Stopped":  # doesn't do generator shutdown when it gets stopped by button. So I guess I need to change to setup and teardown funcitons
-            try:
-                result = next(work_generator)
-            except StopIteration:
-                self.set_stopped()
+        self.on_start(*on_start_args)
+        while self.state != "Stopped":
+            result = self.producer_work(*work_args)
             for queue in self.queues:
                 queue.put(result)
         self.send_state()
+        self.on_stopped(*on_stopped_args)
 
     @abstractmethod
     def producer_work(self, *args):
-        # Gets called in loop. Use self.set_stop() to stop
+        # Gets called in loop. Use self.set_stopped() to stop
         pass
 
 
@@ -120,12 +126,14 @@ class Consumer(Worker):
         super().__init__()
         self.queue = queue.Queue()
 
-    def work(self, *args):
+    def work(self,  on_start_args, work_args, on_stopped_args):
         self.send_state()
+        self.on_start(*on_start_args)
         while self.state != "Stopped":
             item = self.queue.get()
             self.consumer_work(item)
         self.send_state()
+        self.on_stopped(*on_stopped_args)
 
     @abstractmethod
     def consumer_work(self, item):
@@ -133,18 +141,31 @@ class Consumer(Worker):
 
 
 class MyProducer(Producer):
+    def on_start(self, start_point, stop_point):
+        self.value = start_point
+        self.stop_point = stop_point
+        print("started myproducer")
+
+    def on_stopped(self, *args):
+        print("stopped myproducer")
+
     def producer_work(self, *args):
-        value = args[0]
-        while value < args[1]:
-            value += 1
-            print(value)
-            time.sleep(0.05)
-            yield value
-        print("doneskis!") #this only gets called if the generator finishes by itself. need to change to setup and teardown functions instead of generator
+        time.sleep(0.05)
+        if self.value < self.stop_point:
+            self.value += 1
+        else:
+            self.set_stopped()
+        return self.value
 
 
 class MyConsumer(Consumer, QtCore.QObject):
     value_changed = QtCore.pyqtSignal(int)
+
+    def on_start(self, *args):
+        print("started myconsumer")
+
+    def on_stopped(self, *args):
+        print("stopped myconsumer")
 
     def consumer_work(self, item):
         self.value_changed.emit(item)
@@ -162,16 +183,17 @@ if __name__ == "__main__":
 
     producer.add_subscriber(consumer_1.queue)
     producer.add_subscriber(consumer_2.queue)
-    consumer_1.start_new()
-    consumer_2.start_new()
+    consumer_1.start_new(on_start_args="", work_args="", on_stopped_args="")
+    consumer_2.start_new(on_start_args="", work_args="", on_stopped_args="")
 
     consumer_1.value_changed.connect(main_window.progress_bar_1.setValue)
     consumer_2.value_changed.connect(main_window.progress_bar_2.setValue)
 
     main_window.stop_button.clicked.connect(producer.set_stopped)
     main_window.start_button.clicked.connect(
-        lambda clicked: producer.start_new(main_window.progress_bar_1.value() % 100,
-                                           main_window.progress_bar_1.maximum()))
+        lambda clicked: producer.start_new(on_start_args=(main_window.progress_bar_1.value() % 100, main_window.progress_bar_1.maximum()),
+                                           work_args="", on_stopped_args="",
+                                           ))
 
     # Work status signal notifies us when the worker status changes. Switch to the appropriate button
     producer.state_signal.connect(
