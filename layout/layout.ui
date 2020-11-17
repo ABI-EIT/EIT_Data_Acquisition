@@ -46,13 +46,6 @@
        </widget>
       </item>
       <item>
-       <widget class="QPushButton" name="pushButton">
-        <property name="text">
-         <string>Read</string>
-        </property>
-       </widget>
-      </item>
-      <item>
        <widget class="QTextEdit" name="textEdit">
         <property name="readOnly">
          <bool>true</bool>
