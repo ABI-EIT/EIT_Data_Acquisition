@@ -131,23 +131,24 @@ class Consumer(Worker):
         self.on_start(*on_start_args)
         while self.state != "Stopped":
             item = self.queue.get()
-            self.consumer_work(item)
+            self.consumer_work(item, *work_args)
         self.send_state()
         self.on_stopped(*on_stopped_args)
 
     @abstractmethod
-    def consumer_work(self, item):
+    def consumer_work(self, item, *args):
+        # Gets called in loop. Use self.set_stopped() to stop
         pass
 
 
 class MyProducer(Producer):
-    def on_start(self, start_point, stop_point):
+    def on_start(self, start_point, stop_point, on_start_message):
         self.value = start_point
         self.stop_point = stop_point
-        print("started myproducer")
+        print(on_start_message)
 
-    def on_stopped(self, *args):
-        print("stopped myproducer")
+    def on_stopped(self, on_stopped_message):
+        print(on_stopped_message)
 
     def producer_work(self, *args):
         time.sleep(0.05)
@@ -161,13 +162,13 @@ class MyProducer(Producer):
 class MyConsumer(Consumer, QtCore.QObject):
     value_changed = QtCore.pyqtSignal(int)
 
-    def on_start(self, *args):
-        print("started myconsumer")
+    def on_start(self, on_start_message):
+        print(on_start_message)
 
-    def on_stopped(self, *args):
-        print("stopped myconsumer")
+    def on_stopped(self, on_stopped_message):
+        print(on_stopped_message)
 
-    def consumer_work(self, item):
+    def consumer_work(self, item, *args):
         self.value_changed.emit(item)
 
 
@@ -183,16 +184,16 @@ if __name__ == "__main__":
 
     producer.add_subscriber(consumer_1.queue)
     producer.add_subscriber(consumer_2.queue)
-    consumer_1.start_new(on_start_args="", work_args="", on_stopped_args="")
-    consumer_2.start_new(on_start_args="", work_args="", on_stopped_args="")
+    consumer_1.start_new(on_start_args=("Started consumer_1",), work_args="", on_stopped_args=("Stopped consumer_1",))
+    consumer_2.start_new(on_start_args=("Started consumer_2",), work_args="", on_stopped_args=("Stopped consumer_2",))
 
     consumer_1.value_changed.connect(main_window.progress_bar_1.setValue)
     consumer_2.value_changed.connect(main_window.progress_bar_2.setValue)
 
     main_window.stop_button.clicked.connect(producer.set_stopped)
     main_window.start_button.clicked.connect(
-        lambda clicked: producer.start_new(on_start_args=(main_window.progress_bar_1.value() % 100, main_window.progress_bar_1.maximum()),
-                                           work_args="", on_stopped_args="",
+        lambda clicked: producer.start_new(on_start_args=(main_window.progress_bar_1.value() % 100, main_window.progress_bar_1.maximum(), "Started producer"),
+                                           work_args="", on_stopped_args=("Stopped producer",),
                                            ))
 
     # Work status signal notifies us when the worker status changes. Switch to the appropriate button
