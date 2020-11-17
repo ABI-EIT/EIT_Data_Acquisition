@@ -5,8 +5,6 @@ import time
 import queue
 from abc import ABCMeta, abstractmethod
 
-worker_monitor_refresh_wait = 0.05
-
 
 class MainWindow(QtWidgets.QMainWindow):
     def __init__(self):
@@ -45,11 +43,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self.stop_button.setVisible(False)
 
 
-class TestException(Exception):
-    def __init__(self):
-        self.message = "Test Exception"
-
-
 class Worker:
     __metaclass__ = ABCMeta
 
@@ -57,7 +50,6 @@ class Worker:
         self.worker_thread = None
         self.monitor_thread = None
         self.state = "Stopped"
-        self.old_state = None
         self.lock = threading.Lock()
 
     def set_stopped(self):
@@ -78,16 +70,6 @@ class Worker:
                 time.sleep(0)
         self.state = "Started"
         self.worker_thread = threading.Thread(target=self.work, args=(on_start_args, work_args, on_stopped_args), daemon=True).start()
-        self.monitor_thread = threading.Thread(target=self.monitor_state, daemon=True).start()
-
-    def monitor_state(self):
-        while True:
-            if self.worker_thread is not None and not self.worker_thread.is_alive():
-                if self.get_state() != "Stopped":
-                    self.state = "Crashed"
-                    self.on_state_changed(self.get_state())
-                    break
-            time.sleep(worker_monitor_refresh_wait)
 
     @abstractmethod
     def on_state_changed(self, state):
@@ -174,8 +156,6 @@ class MyProducer(Producer, QtCore.QObject):
 
     def producer_work(self, *args):
         time.sleep(0.05)
-        if self.value > 75:
-            raise TestException()
         if self.value < self.stop_point:
             self.value += 1
         else:
