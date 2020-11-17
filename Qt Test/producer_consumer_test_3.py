@@ -5,6 +5,8 @@ import time
 import queue
 from abc import ABCMeta, abstractmethod
 
+worker_monitor_refresh_wait = 0.05
+
 
 class MainWindow(QtWidgets.QMainWindow):
     def __init__(self):
@@ -43,17 +45,20 @@ class MainWindow(QtWidgets.QMainWindow):
         self.stop_button.setVisible(False)
 
 
-class Worker(QtCore.QObject):
+class TestException(Exception):
+    def __init__(self):
+        self.message = "Test Exception"
+
+
+class Worker:
     __metaclass__ = ABCMeta
-    state_signal = QtCore.pyqtSignal(str)  # Replace all this shit with the monitor thread + a virtual function
 
     def __init__(self):
-        QtCore.QObject.__init__(self)
         self.worker_thread = None
         self.monitor_thread = None
         self.state = "Stopped"
+        self.old_state = None
         self.lock = threading.Lock()
-        # monitor queue + monitor thread should replace the threading.lock
 
     def set_stopped(self):
         self.lock.acquire()
@@ -66,23 +71,31 @@ class Worker(QtCore.QObject):
         self.lock.release()
         return state
 
-    def send_state(self):
-        self.state_signal.emit(self.state)
-
     def start_new(self, on_start_args, work_args, on_stopped_args):
         if self.worker_thread is not None:
-            self.set_stop()
-            while self.worker_therad.is_alive():
+            self.set_stopped()
+            while self.worker_thread.is_alive():
                 time.sleep(0)
         self.state = "Started"
         self.worker_thread = threading.Thread(target=self.work, args=(on_start_args, work_args, on_stopped_args), daemon=True).start()
-        # start monitor thread
+        self.monitor_thread = threading.Thread(target=self.monitor_state, daemon=True).start()
 
-    # def state broadcast (abstract)
+    def monitor_state(self):
+        while True:
+            if self.worker_thread is not None and not self.worker_thread.is_alive():
+                if self.get_state() != "Stopped":
+                    self.state = "Crashed"
+                    self.on_state_changed(self.get_state())
+                    break
+            time.sleep(worker_monitor_refresh_wait)
 
     @abstractmethod
-    def work(self, *args):  # Maybe this shouldn't be abstract as we always need to send status
-        pass                # but we need an abstract function within it
+    def on_state_changed(self, state):
+        pass
+
+    @abstractmethod
+    def work(self, *args):
+        pass
 
     @abstractmethod
     def on_start(self, *args):
@@ -104,13 +117,13 @@ class Producer(Worker):
         self.queues.append(queue)
 
     def work(self, on_start_args, work_args, on_stopped_args):
-        self.send_state()
+        self.on_state_changed(self.get_state())
         self.on_start(*on_start_args)
         while self.state != "Stopped":
             result = self.producer_work(*work_args)
             for queue in self.queues:
                 queue.put(result)
-        self.send_state()
+        self.on_state_changed(self.get_state())
         self.on_stopped(*on_stopped_args)
 
     @abstractmethod
@@ -127,12 +140,12 @@ class Consumer(Worker):
         self.queue = queue.Queue()
 
     def work(self,  on_start_args, work_args, on_stopped_args):
-        self.send_state()
+        self.on_state_changed(self.get_state())
         self.on_start(*on_start_args)
         while self.state != "Stopped":
             item = self.queue.get()
             self.consumer_work(item, *work_args)
-        self.send_state()
+        self.on_state_changed(self.get_state())
         self.on_stopped(*on_stopped_args)
 
     @abstractmethod
@@ -140,8 +153,17 @@ class Consumer(Worker):
         # Gets called in loop. Use self.set_stopped() to stop
         pass
 
+    def on_state_changed(self, state):
+        pass
 
-class MyProducer(Producer):
+
+class MyProducer(Producer, QtCore.QObject):
+    state_signal = QtCore.pyqtSignal(str)
+
+    def __init__(self):
+        Producer.__init__(self)
+        QtCore.QObject.__init__(self)
+
     def on_start(self, start_point, stop_point, on_start_message):
         self.value = start_point
         self.stop_point = stop_point
@@ -152,15 +174,24 @@ class MyProducer(Producer):
 
     def producer_work(self, *args):
         time.sleep(0.05)
+        if self.value > 75:
+            raise TestException()
         if self.value < self.stop_point:
             self.value += 1
         else:
             self.set_stopped()
         return self.value
 
+    def on_state_changed(self, state):
+        self.state_signal.emit(state)
+
 
 class MyConsumer(Consumer, QtCore.QObject):
     value_changed = QtCore.pyqtSignal(int)
+
+    def __init__(self):
+        Consumer.__init__(self)
+        QtCore.QObject.__init__(self)
 
     def on_start(self, on_start_message):
         print(on_start_message)
