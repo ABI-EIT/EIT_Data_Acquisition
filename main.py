@@ -7,6 +7,7 @@ from matplotlib.backends.backend_qt5agg import (
     NavigationToolbar2QT as NavigationToolbar
 )
 import matplotlib
+import matplotlib.pyplot
 from pyeit.app.eit import *
 import pyvisa
 from thread_helpers.worker import Producer, Consumer
@@ -42,9 +43,29 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.verticalLayout.addWidget(self.toolbar)
         self.canvas.draw()
 
-    def update_plot(self, fig):
+    def update_plot(self, eit_image, obj):
+        fig, imgs = create_plot([eit_image], obj)
+        canvas = FigureCanvas(fig)
+
+        self.verticalLayout.removeWidget(self.canvas)
+        self.canvas.deleteLater()
+        self.canvas = None
+
+        self.verticalLayout.removeWidget(self.toolbar)
+        self.toolbar.deleteLater()
+        self.toolbar = None
+
+        old_fig = self.fig
         self.fig = fig
+        self.canvas = canvas
+        self.toolbar = NavigationToolbar(self.canvas, self.widget, coordinates=True)
+
+        self.verticalLayout.addWidget(self.canvas)
+        self.verticalLayout.addWidget(self.toolbar)
         self.canvas.draw()
+
+        matplotlib.pyplot.close(old_fig)
+        # old_fig.close()
 
     def populate_devices(self):
         self.rm = pyvisa.ResourceManager()
@@ -55,7 +76,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.reader.add_subscriber(self.data_writer.queue)
         self.data_writer.start_new(on_stopped_args="", work_args="", on_start_args="")
         self.data_writer.new_data.connect(lambda data: self.textEdit.append(data))
-        self.plotter.start_new(on_start_args=(self.pickle,self.conf,self.background), work_args=(self.update_plot,),on_stopped_args=())
+        self.plotter.start_new(on_start_args=(self.pickle,self.conf,self.background), work_args=(), on_stopped_args=())
+        self.plotter.new_data.connect(lambda data: self.update_plot(data[0],data[1]))
         self.reader.add_subscriber(self.plotter.queue)
 
 
@@ -110,7 +132,7 @@ class DataWriter(Consumer, QtCore.QObject):
 
 class PlotterConsumer(Consumer, QtCore.QObject):
     state_signal = QtCore.pyqtSignal(str)
-    new_data = QtCore.pyqtSignal(str)
+    new_data = QtCore.pyqtSignal(tuple)
 
     def __init__(self):
         Consumer.__init__(self)
@@ -129,18 +151,12 @@ class PlotterConsumer(Consumer, QtCore.QObject):
 
     def consumer_work(self, item, *args):
         if item is not None:
-            data = []
-            for line in item:
-                data.append(parse_oeit_line(line))
+            data = parse_oeit_line(item)
+            if data is not None:
+                eit_image = process_frame(self.eit_obj, data, self.conf, self.background)
+                self.new_data.emit((eit_image,self.eit_obj))
 
-            print(data)
-
-            if data[0] is not None:
-                print("Got a frame")
-                eit_image = process_frame(self.eit_obj, data[0], self.conf, self.background)
-                fig, imgs = create_plot([eit_image], self.eit_obj)
-
-                args[0](fig)
+        return
 
 
 if __name__ == '__main__':
