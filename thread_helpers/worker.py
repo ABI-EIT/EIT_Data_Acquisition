@@ -7,14 +7,17 @@ from abc import ABCMeta, abstractmethod
 class Worker:
     __metaclass__ = ABCMeta
 
+    stopped = "Stopped"
+    started = "Started"
+
     def __init__(self):
         self.worker_thread = None
-        self.state = "Stopped"
+        self.state = self.stopped
         self.lock = threading.Lock()
 
     def set_stopped(self):
         self.lock.acquire()
-        self.state = "Stopped"
+        self.state = self.stopped
         self.lock.release()
 
     def get_state(self):
@@ -28,7 +31,7 @@ class Worker:
             self.set_stopped()
             while self.worker_thread.is_alive():
                 time.sleep(0)
-        self.state = "Started"
+        self.state = self.started
         self.worker_thread = threading.Thread(target=self.work, args=(on_start_args, work_args, on_stopped_args), daemon=True).start()
 
     @abstractmethod
@@ -61,7 +64,7 @@ class Producer(Worker):
     def work(self, on_start_args, work_args, on_stopped_args):
         self.on_state_changed(self.get_state())
         self.on_start(*on_start_args)
-        while self.state != "Stopped":
+        while self.state != self.stopped:
             result = self.producer_work(*work_args)
             for queue in self.queues:
                 queue.put(result)
@@ -84,7 +87,7 @@ class Consumer(Worker):
     def work(self,  on_start_args, work_args, on_stopped_args):
         self.on_state_changed(self.get_state())
         self.on_start(*on_start_args)
-        while self.state != "Stopped":
+        while self.state != self.stopped:
             item = self.queue.get()
             self.consumer_work(item, *work_args)
         self.on_state_changed(self.get_state())

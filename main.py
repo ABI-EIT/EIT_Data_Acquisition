@@ -8,14 +8,12 @@ from matplotlib.backends.backend_qt5agg import (
 )
 import matplotlib
 import matplotlib.pyplot
-from pyeit.app.eit import *
+from abi_pyeit.app.eit import *
 import pyvisa
 from thread_helpers.worker import Producer, Consumer
 import time
 
 Ui_MainWindow, QMainWindow = uic.loadUiType("layout/layout.ui")
-
-
 
 
 class MainWindow(QMainWindow, Ui_MainWindow):
@@ -72,13 +70,21 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.comboBox.addItems(self.rm.list_resources())
 
     def change_device(self, text):
+        if self.data_writer.get_state() != self.data_writer.started:
+            self.reader.add_subscriber(self.data_writer.queue)
+            self.data_writer.start_new(on_stopped_args="", work_args="", on_start_args="")
+            self.data_writer.new_data.connect(lambda data: self.textEdit.append(data))
+
+        if self.plotter.get_state() != self.plotter.started:
+            self.reader.add_subscriber(self.plotter.queue)
+            self.plotter.start_new(on_start_args=(self.pickle, self.conf, self.background), work_args=(), on_stopped_args=())
+            self.plotter.new_data.connect(lambda data: self.update_plot(data[0], data[1]))
+
+        if self.reader.get_state() != self.reader.stopped:
+            self.reader.set_stopped()
+
         self.reader.start_new(on_start_args=(text,), work_args=(), on_stopped_args=())
-        self.reader.add_subscriber(self.data_writer.queue)
-        self.data_writer.start_new(on_stopped_args="", work_args="", on_start_args="")
-        self.data_writer.new_data.connect(lambda data: self.textEdit.append(data))
-        self.plotter.start_new(on_start_args=(self.pickle,self.conf,self.background), work_args=(), on_stopped_args=())
-        self.plotter.new_data.connect(lambda data: self.update_plot(data[0],data[1]))
-        self.reader.add_subscriber(self.plotter.queue)
+
 
 
 class Reader(Producer, QtCore.QObject):
@@ -95,6 +101,8 @@ class Reader(Producer, QtCore.QObject):
         self.device.baud_rate = 115200
 
     def on_stopped(self, on_stopped_message):
+        if self.device is not None:
+            self.device.close()
         pass
 
     def producer_work(self, *args):
