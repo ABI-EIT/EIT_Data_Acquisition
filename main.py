@@ -11,9 +11,16 @@ import matplotlib.pyplot
 from abi_pyeit.app.eit import *
 import pyvisa
 from thread_helpers.worker import Producer, Consumer
+import threading
 import time
 
 Ui_MainWindow, QMainWindow = uic.loadUiType("layout/layout.ui")
+
+# default_pickle = "configuration/mesha06_bumpychestslice_pickle_dist1_step1"
+default_pickle = "configuration/mesha06_bumpychestslice_pickle"
+default_conf = "configuration/conf.json"
+default_baud_rate = 115200
+default_buffer_size = 2048
 
 
 class MainWindow(QMainWindow, Ui_MainWindow):
@@ -28,9 +35,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.data_writer = DataWriter()
         self.plotter = PlotterConsumer()
         self.add_plot(matplotlib.figure.Figure())
-        self.pickle = "configuration/mesha06_bumpychestslice_pickle"
-        self.conf = "configuration/conf.json"
-        self.background = None
+        self.pickle = default_pickle
+        self.conf = default_conf
+        self.initial_background = None
+
+        self.set_background_button.clicked.connect(lambda: self.plotter.set_background(self.plotter.get_current_frame()))
+        self.clear_background_button.clicked.connect(lambda: self.plotter.set_background(None))
 
     def add_plot(self, fig):
         self.fig = fig
@@ -77,14 +87,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         if self.plotter.get_state() != self.plotter.started:
             self.reader.add_subscriber(self.plotter.queue)
-            self.plotter.start_new(on_start_args=(self.pickle, self.conf, self.background), work_args=(), on_stopped_args=())
+            self.plotter.start_new(on_start_args=(self.pickle, self.conf, self.initial_background), work_args=(), on_stopped_args=())
             self.plotter.new_data.connect(lambda data: self.update_plot(data[0], data[1]))
 
         if self.reader.get_state() != self.reader.stopped:
             self.reader.set_stopped()
 
         self.reader.start_new(on_start_args=(text,), work_args=(), on_stopped_args=())
-
 
 
 class Reader(Producer, QtCore.QObject):
@@ -98,7 +107,7 @@ class Reader(Producer, QtCore.QObject):
     def on_start(self, device_name):
         rm = pyvisa.ResourceManager()
         self.device = rm.open_resource(device_name)
-        self.device.baud_rate = 115200
+        self.device.baud_rate = default_baud_rate
 
     def on_stopped(self, on_stopped_message):
         if self.device is not None:
@@ -107,7 +116,7 @@ class Reader(Producer, QtCore.QObject):
 
     def producer_work(self, *args):
         try:
-            while self.device.bytes_in_buffer < 2048:
+            while self.device.bytes_in_buffer < default_buffer_size:
                 time.sleep(0.01)
             data = self.device.read()
         except pyvisa.errors.VisaIOError as e:
@@ -141,18 +150,49 @@ class DataWriter(Consumer, QtCore.QObject):
 class PlotterConsumer(Consumer, QtCore.QObject):
     state_signal = QtCore.pyqtSignal(str)
     new_data = QtCore.pyqtSignal(tuple)
+    eit_obj = None
+    conf = None
+
+    background_lock = threading.Lock()
+    background = None
+
+    current_frame_lock = threading.Lock()
+    current_frame = None
+
 
     def __init__(self):
         Consumer.__init__(self)
         QtCore.QObject.__init__(self)
 
-    def on_start(self, pickle, conf, background):
+    def on_start(self, pickle, conf, initial_background):
         self.eit_obj = unpickle_eit(pickle)
         self.conf = load_conf(conf)
-        if background is not None:
-            self.background = load_oeit_data(background)[0]
+        if initial_background is not None:
+            self.background = load_oeit_data(initial_background)[0]
         else:
             self.background = None
+
+    def set_background(self, background):
+        self.background_lock.acquire()
+        self.background = background
+        self.background_lock.release()
+
+    def get_background(self):
+        self.background_lock.acquire()
+        background = self.background
+        self.background_lock.release()
+        return background
+
+    def set_current_frame(self, frame):
+        self.current_frame_lock.acquire()
+        self.current_frame = frame
+        self.current_frame_lock.release()
+
+    def get_current_frame(self):
+        self.current_frame_lock.acquire()
+        current_frame = self.current_frame
+        self.current_frame_lock.release()
+        return current_frame
 
     def on_stopped(self, *args):
         pass
@@ -161,8 +201,9 @@ class PlotterConsumer(Consumer, QtCore.QObject):
         if item is not None:
             data = parse_oeit_line(item)
             if data is not None:
-                eit_image = process_frame(self.eit_obj, data, self.conf, self.background)
-                self.new_data.emit((eit_image,self.eit_obj))
+                self.set_current_frame(data)
+                eit_image = process_frame(self.eit_obj, data, self.conf, self.get_background())
+                self.new_data.emit((eit_image, self.eit_obj))
 
         return
 
@@ -173,7 +214,6 @@ if __name__ == '__main__':
     dw = QtWidgets.QDesktopWidget()
 
     main_window.resize(dw.availableGeometry(dw).size() * 0.7)
-
 
     main_window.comboBox.currentTextChanged.connect(main_window.change_device)
 
