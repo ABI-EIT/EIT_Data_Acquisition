@@ -2,6 +2,7 @@ import threading
 import time
 import queue
 from abc import ABCMeta, abstractmethod
+import atexit
 
 
 class Worker:
@@ -14,6 +15,7 @@ class Worker:
         self.worker_thread = None
         self.state = self.stopped
         self.lock = threading.Lock()
+        atexit.register(self.set_stopped)
 
     def set_stopped(self):
         self.lock.acquire()
@@ -69,7 +71,7 @@ class Producer(Worker):
             for queue in self.queues:
                 queue.put(result)
         self.on_state_changed(self.get_state())
-        self.on_stopped(*on_stopped_args)
+        self.on_stopped(self, *on_stopped_args)
 
     @abstractmethod
     def producer_work(self, *args):

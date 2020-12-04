@@ -22,6 +22,7 @@ default_conf = "configuration/conf.json"
 default_baud_rate = 115200
 frame_start_char = "m"
 read_timeout = 10000
+read_termination_char = "\n"
 
 
 class MainWindow(QMainWindow, Ui_MainWindow):
@@ -77,8 +78,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # old_fig.close()
 
     def populate_devices(self):
-        self.rm = pyvisa.ResourceManager()
-        self.comboBox.addItems(self.rm.list_resources())
+        self.comboBox.addItems(pyvisa.ResourceManager().list_resources())
 
     def change_device(self, text):
         if self.data_writer.get_state() != self.data_writer.started:
@@ -106,16 +106,20 @@ class Reader(Producer, QtCore.QObject):
         self.device = None
 
     def on_start(self, device_name):
-        rm = pyvisa.ResourceManager()
-        self.device = rm.open_resource(device_name)
-        self.device.set_visa_attribute(pyvisa.resources.resource.constants.VI_ATTR_TMO_VALUE, read_timeout)
+        self.device = pyvisa.ResourceManager().open_resource(device_name)
+        self.device.timeout = read_timeout
         self.device.baud_rate = default_baud_rate
         self.device.flush(pyvisa.resources.resource.constants.VI_IO_IN_BUF)
-        self.device.read_termination = "\n"
+        self.device.read_termination = read_termination_char
 
     def on_stopped(self, on_stopped_message):
         if self.device is not None:
-            self.device.close()
+            pyvisa.ResourceManager()  # Need to instatiate this here or resource will become invalid before we can close it. Not sure why
+            try:
+                self.device.close()
+            except pyvisa.errors.VisaIOError as e:
+                print(e)
+                pass
         pass
 
     def producer_work(self, *args):
@@ -124,6 +128,9 @@ class Reader(Producer, QtCore.QObject):
             if data[0] != frame_start_char:
                 return None
         except pyvisa.errors.VisaIOError as e:
+            print(e)
+            return None
+        except UnicodeDecodeError as e:
             print(e)
             return None
         return data
@@ -222,7 +229,6 @@ if __name__ == '__main__':
 
     main_window.show()
     app.exec()
-
 
 
 
