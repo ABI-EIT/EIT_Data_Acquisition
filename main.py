@@ -13,6 +13,7 @@ import pyvisa
 from thread_helpers.worker import Producer, Consumer
 import threading
 import time
+import codecs
 
 Ui_MainWindow, QMainWindow = uic.loadUiType("layout/layout.ui")
 
@@ -23,6 +24,7 @@ default_baud_rate = 115200
 frame_start_char = "m"
 read_timeout = 10000
 read_termination_char = "\n"
+encoding = "latin-1"  # We sometimes get bytes from the spectra that aren't ascii or utf-8. Not sure what they are. Haven't seen it not work with this yet
 
 
 class MainWindow(QMainWindow, Ui_MainWindow):
@@ -109,6 +111,7 @@ class Reader(Producer, QtCore.QObject):
         self.device = pyvisa.ResourceManager().open_resource(device_name)
         self.device.timeout = read_timeout
         self.device.baud_rate = default_baud_rate
+        self.device.encoding = encoding
         self.device.flush(pyvisa.resources.resource.constants.VI_IO_IN_BUF)
         self.device.read_termination = read_termination_char
 
