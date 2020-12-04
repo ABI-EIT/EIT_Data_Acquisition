@@ -20,7 +20,8 @@ Ui_MainWindow, QMainWindow = uic.loadUiType("layout/layout.ui")
 default_pickle = "configuration/mesha06_bumpychestslice_pickle"
 default_conf = "configuration/conf.json"
 default_baud_rate = 115200
-default_buffer_size = 2048
+frame_start_char = "m"
+read_timeout = 10000
 
 
 class MainWindow(QMainWindow, Ui_MainWindow):
@@ -107,7 +108,10 @@ class Reader(Producer, QtCore.QObject):
     def on_start(self, device_name):
         rm = pyvisa.ResourceManager()
         self.device = rm.open_resource(device_name)
+        self.device.set_visa_attribute(pyvisa.resources.resource.constants.VI_ATTR_TMO_VALUE, read_timeout)
         self.device.baud_rate = default_baud_rate
+        self.device.flush(pyvisa.resources.resource.constants.VI_IO_IN_BUF)
+        self.device.read_termination = "\n"
 
     def on_stopped(self, on_stopped_message):
         if self.device is not None:
@@ -116,9 +120,9 @@ class Reader(Producer, QtCore.QObject):
 
     def producer_work(self, *args):
         try:
-            while self.device.bytes_in_buffer < default_buffer_size:
-                time.sleep(0.01)
             data = self.device.read()
+            if data[0] != frame_start_char:
+                return None
         except pyvisa.errors.VisaIOError as e:
             print(e)
             return None
@@ -158,7 +162,6 @@ class PlotterConsumer(Consumer, QtCore.QObject):
 
     current_frame_lock = threading.Lock()
     current_frame = None
-
 
     def __init__(self):
         Consumer.__init__(self)
