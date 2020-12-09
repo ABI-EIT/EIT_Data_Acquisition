@@ -39,12 +39,23 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.data_writer = DataWriter()
         self.plotter = PlotterConsumer()
         self.add_plot(matplotlib.figure.Figure())
-        self.pickle = default_pickle
+        # self.pickle = default_pickle
         self.conf = default_conf
         self.initial_background = None
 
+        self.eit_obj = self.initialize_eit_obj(default_pickle, self.conf)
+
         self.set_background_button.clicked.connect(lambda: self.plotter.set_background(self.plotter.get_current_frame()))
         self.clear_background_button.clicked.connect(lambda: self.plotter.set_background(None))
+
+    def initialize_eit_obj(self, pickle, conf):
+        conf = load_conf(conf)
+        setup = conf["setup"]
+
+        eit_obj = unpickle_eit(pickle)
+        eit_obj.setup(p=setup["p"], lamb=setup["lamb"], method=setup["method"])
+
+        return eit_obj
 
     def add_plot(self, fig):
         self.fig = fig
@@ -90,7 +101,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         if self.plotter.get_state() != self.plotter.started:
             self.reader.add_subscriber(self.plotter.queue)
-            self.plotter.start_new(on_start_args=(self.pickle, self.conf, self.initial_background), work_args=(), on_stopped_args=())
+            self.plotter.start_new(on_start_args=(self.eit_obj, self.conf, self.initial_background), work_args=(), on_stopped_args=())
             self.plotter.new_data.connect(lambda data: self.update_plot(data[0], data[1]))
 
         if self.reader.get_state() != self.reader.stopped:
@@ -177,8 +188,8 @@ class PlotterConsumer(Consumer, QtCore.QObject):
         Consumer.__init__(self)
         QtCore.QObject.__init__(self)
 
-    def on_start(self, pickle, conf, initial_background):
-        self.eit_obj = unpickle_eit(pickle)
+    def on_start(self, eit_obj, conf, initial_background):
+        self.eit_obj = eit_obj
         self.conf = load_conf(conf)
         if initial_background is not None:
             self.background = load_oeit_data(initial_background)[0]
