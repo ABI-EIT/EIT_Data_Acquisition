@@ -16,6 +16,7 @@ from thread_helpers.worker import Producer, Consumer
 import threading
 import time
 import codecs
+import matplotlib.tri as tri
 
 Ui_MainWindow, QMainWindow = uic.loadUiType("layout/layout.ui")
 
@@ -72,44 +73,33 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.verticalLayout.addWidget(self.canvas)
         self.verticalLayout.addWidget(self.toolbar)
 
-    def update_plot(self, eit_image, obj):
-        # start_time = time.time()
+    def update_plot(self, triangulation, eit_image, electrode_points):
+        start_time = time.time()
 
-        electrode_indices = obj.el_pos
-        pts = obj.mesh['node']
-        tri = obj.mesh['element']
-        x = pts[:, 0]
-        y = pts[:, 1]
+        self.ax.clear()
 
-        old_plot_image = self.plot_image
-        self.plot_image = self.ax.tripcolor(x, y, tri, eit_image)
+        self.plot_image = self.ax.tripcolor(triangulation, eit_image)
+        self.plot_image.axes.set_aspect('equal')
 
-        if self.first_plot:
-            artists = []
-            for i, e in enumerate(electrode_indices):
-                self.ax.text(x[e], y[e], str(i + 1), size=12)
-            self.plot_image.axes.set_aspect('equal')
-            self.divider = make_axes_locatable(self.ax)
-            self.color_axis = self.divider.append_axes("right", size="5%", pad=0.1)
-            self.color_axis.yaxis.tick_right()
-            self.cb = self.ax.figure.colorbar(self.plot_image, cax=self.color_axis)
+        for i, e in enumerate(electrode_points):
+            self.ax.text(e[0], e[1], str(i + 1), size=12)
 
-            artists.append(self.plot_image)
-            artists.append(self.color_axis)
-            self.bm = BlitManager(self.canvas, artists)
-            self.ax.figure.canvas.draw()
-            self.first_plot = False
+        # if self.first_plot:
+        #     self.divider = make_axes_locatable(self.ax)
+        #     self.color_axis = self.divider.append_axes("right", size="5%", pad=0.1)
+        #     self.color_axis.yaxis.tick_right()
+        #     self.cb = self.ax.figure.colorbar(self.plot_image, cax=self.color_axis)
+        #     self.first_plot = False
+        #
+        # else:
+        #     self.color_axis.clear()
+        #     self.cb = self.ax.figure.colorbar(self.plot_image, cax=self.color_axis)
 
-        else:
-            self.color_axis.clear()
-            self.cb = self.ax.figure.colorbar(self.plot_image, cax=self.color_axis)
-            self.bm.remove_artist(old_plot_image)
-            self.bm.add_artist(self.plot_image)
+        self.ax.figure.canvas.draw()
 
-        self.bm.update()
 
-        # elapsed_time = time.time()-start_time
-        # print("Plotting time: " + str(elapsed_time))
+        elapsed_time = time.time()-start_time
+        print("Plotting time: %.2fs" % elapsed_time)
 
     def populate_devices(self):
         self.comboBox.addItems(pyvisa.ResourceManager().list_resources())
@@ -124,12 +114,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         if self.plotter.get_state() != self.plotter.started:
             self.reader.add_subscriber(self.plotter.queue)
             self.plotter.start_new(on_start_args=(self.eit_obj, self.conf, self.initial_background), work_args=(), on_stopped_args=())
-            self.plotter.new_data.connect(lambda data: self.update_plot(data[0],data[1]))
+            self.plotter.new_data.connect(lambda data: self.update_plot(data[0], data[1], data[2]))
 
         if self.reader.get_state() != self.reader.stopped:
             self.reader.set_stopped()
 
         self.reader.start_new(on_start_args=(text,), work_args=(), on_stopped_args=())
+
 
 class Reader(Producer, QtCore.QObject):
     state_signal = QtCore.pyqtSignal(str)
@@ -248,86 +239,18 @@ class PlotterConsumer(Consumer, QtCore.QObject):
             if data is not None:
                 self.set_current_frame(data)
                 eit_image = process_frame(self.eit_obj, data, self.conf, self.get_background())
-                self.new_data.emit((eit_image, self.eit_obj))
+
+                pts = self.eit_obj.mesh['node']
+                triangles = self.eit_obj.mesh['element']
+                x = pts[:, 0]
+                y = pts[:, 1]
+                triangulation = tri.Triangulation(x, y, triangles=triangles)
+
+                electrode_points = [(x[e],y[e]) for e in self.eit_obj.el_pos]
+
+                self.new_data.emit((triangulation, eit_image, electrode_points))
 
         return
-
-
-class BlitManager:
-    def __init__(self, canvas, animated_artists=()):
-        """
-        Parameters
-        ----------
-        canvas : FigureCanvasAgg
-            The canvas to work with, this only works for sub-classes of the Agg
-            canvas which have the `~FigureCanvasAgg.copy_from_bbox` and
-            `~FigureCanvasAgg.restore_region` methods.
-
-        animated_artists : Iterable[Artist]
-            List of the artists to manage
-        """
-        self.canvas = canvas
-        self._bg = None
-        self._artists = []
-
-        for a in animated_artists:
-            self.add_artist(a)
-        # grab the background on every draw
-        self.cid = canvas.mpl_connect("draw_event", self.on_draw)
-
-    def on_draw(self, event):
-        """Callback to register with 'draw_event'."""
-        cv = self.canvas
-        if event is not None:
-            if event.canvas != cv:
-                raise RuntimeError
-        self._bg = cv.copy_from_bbox(cv.figure.bbox)
-        self._draw_animated()
-
-    def add_artist(self, art):
-        """
-        Add an artist to be managed.
-
-        Parameters
-        ----------
-        art : Artist
-
-            The artist to be added.  Will be set to 'animated' (just
-            to be safe).  *art* must be in the figure associated with
-            the canvas this class is managing.
-
-        """
-        if art.figure != self.canvas.figure:
-            raise RuntimeError
-        art.set_animated(True)
-        self._artists.append(art)
-        self._artists.sort(key=lambda a: a.zorder)
-
-    def remove_artist(self, artist):
-        return self._artists.remove(artist)
-
-    def _draw_animated(self):
-        """Draw all of the animated artists."""
-        fig = self.canvas.figure
-        for a in self._artists:
-            fig.draw_artist(a)
-
-    def update(self):
-        """Update the screen with animated artists."""
-        cv = self.canvas
-        fig = cv.figure
-        # paranoia in case we missed the draw event,
-        if self._bg is None:
-            self.on_draw(None)
-        else:
-            # restore the background
-            cv.restore_region(self._bg)
-            # draw all of the animated artists
-            self._draw_animated()
-            # update the GUI state
-            cv.blit(fig.bbox)
-        # let the GUI event loop process anything it has to do
-        cv.flush_events()
 
 
 if __name__ == '__main__':
