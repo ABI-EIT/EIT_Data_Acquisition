@@ -5,6 +5,7 @@ import sys
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 import time
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 # Prepare data to plot ----------------------------------------------------------
 text_coords = [[1, 0], [.81, .59], [.31, .95], [-.31, .95], [-.81, .59],
@@ -33,6 +34,8 @@ triang.set_mask(np.hypot(x[triang.triangles].mean(axis=1),
 class MainWindow(QtWidgets.QMainWindow):
     def __init__(self):
         super().__init__()
+        self.first_plot = True
+        self.color_axis = None
         self._main = QtWidgets.QWidget()
         self.setCentralWidget(self._main)
         layout = QtWidgets.QVBoxLayout(self._main)
@@ -50,10 +53,23 @@ class MainWindow(QtWidgets.QMainWindow):
     def update_canvas(self):
         start_time = time.time()
         self.ax.clear()
+
+        z = (np.cos(radii+time.time()) * np.cos(3 * angles+time.time())).flatten()
+        plot_image = self.ax.tripcolor(triang, z)
+
         for i in range(0, 10):
             self.ax.text(text_coords[i][0], text_coords[i][1], i)
-        z = (np.cos(radii+time.time()) * np.cos(3 * angles+time.time())).flatten()
-        self.ax.tripcolor(triang, z)
+
+        if self.first_plot:
+            divider = make_axes_locatable(self.ax)
+            self.color_axis = divider.append_axes("right", size="5%", pad=0.1)
+            self.color_axis.yaxis.tick_right()
+            self.ax.figure.colorbar(plot_image, cax=self.color_axis)
+            self.first_plot = False
+
+        else:
+            self.color_axis.clear()
+            self.ax.figure.colorbar(plot_image, cax=self.color_axis)
 
         self.ax.figure.canvas.draw()
         elapsed_time = time.time()-start_time

@@ -80,26 +80,37 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         self.plot_image = self.ax.tripcolor(triangulation, eit_image)
         self.plot_image.axes.set_aspect('equal')
+        tripcolor_done = time.time()
 
         for i, e in enumerate(electrode_points):
             self.ax.text(e[0], e[1], str(i + 1), size=12)
 
-        # if self.first_plot:
-        #     self.divider = make_axes_locatable(self.ax)
-        #     self.color_axis = self.divider.append_axes("right", size="5%", pad=0.1)
-        #     self.color_axis.yaxis.tick_right()
-        #     self.cb = self.ax.figure.colorbar(self.plot_image, cax=self.color_axis)
-        #     self.first_plot = False
-        #
-        # else:
-        #     self.color_axis.clear()
-        #     self.cb = self.ax.figure.colorbar(self.plot_image, cax=self.color_axis)
+        electrode_labels_done = time.time()
+
+        if self.first_plot:
+            self.divider = make_axes_locatable(self.ax)
+            self.color_axis = self.divider.append_axes("right", size="5%", pad=0.1)
+            self.color_axis.yaxis.tick_right()
+            self.cb = self.ax.figure.colorbar(self.plot_image, cax=self.color_axis)
+            self.first_plot = False
+
+        else:
+            self.color_axis.clear()
+            self.cb = self.ax.figure.colorbar(self.plot_image, cax=self.color_axis)
+
+        colorbar_done = time.time()
 
         self.ax.figure.canvas.draw()
 
+        canvas_draw_done = time.time()
 
-        elapsed_time = time.time()-start_time
-        print("Plotting time: %.2fs" % elapsed_time)
+        total_time = canvas_draw_done - start_time
+        tripcolor_time = tripcolor_done - start_time
+        electrode_labels_time = electrode_labels_done -tripcolor_done
+        colorbar_time = colorbar_done - electrode_labels_done
+        canvas_draw_time = canvas_draw_done - colorbar_done
+
+        print("Plotting time total: %.2fs, tripcolor: %.2fs, elec labels: %.2fs, colorbar: %.2fs, canvas draw: %.2fs" % (total_time, tripcolor_time, electrode_labels_time, colorbar_time, canvas_draw_time))
 
     def populate_devices(self):
         self.comboBox.addItems(pyvisa.ResourceManager().list_resources())
