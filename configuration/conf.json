@@ -2,7 +2,7 @@
   "setup": {
     "p": 0.5,
     "lamb": 0.001,
-    "method": "lm"
+    "method": "kotre"
   },
 
   "solve_type": "solve",

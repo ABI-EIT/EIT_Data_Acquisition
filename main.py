@@ -8,6 +8,7 @@ from matplotlib.backends.backend_qt5agg import (
 )
 import matplotlib
 import matplotlib.pyplot
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 from matplotlib.animation import FuncAnimation
 from abi_pyeit.app.eit import *
 import pyvisa
@@ -31,7 +32,7 @@ encoding = "latin-1"  # We sometimes get bytes from the spectra that aren't asci
 class MainWindow(QMainWindow, Ui_MainWindow):
     def __init__(self):
         super(MainWindow, self).__init__()
-        self.first = True
+        self.first_plot = True
         self.setupUi(self)
         self.canvas = None
         self.toolbar = None
@@ -40,9 +41,14 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.reader = Reader()
         self.data_writer = DataWriter()
         self.plotter = PlotterConsumer()
+        self.bm = None
         self.add_plot()
         self.conf = default_conf
         self.initial_background = None
+        self.cb = None
+        self.plot_image = None
+        self.divider = None
+        self.color_axis = None
 
         self.eit_obj = self.initialize_eit_obj(default_pickle, self.conf)
 
@@ -68,15 +74,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def update_plot(self, eit_image, obj):
         # start_time = time.time()
-        # old_fig = self.canvas.figure
-        # fig, imgs = create_plot([eit_image], obj)
-        # self.canvas.figure = fig
-        # fig.set_canvas(self.canvas)
-        # self.canvas.resizeEvent(QtGui.QResizeEvent(self.canvas.size(), QtCore.QSize()))
-        # self.canvas.draw()
-        # matplotlib.pyplot.close(old_fig)
-
-        self.ax.clear()
 
         electrode_indices = obj.el_pos
         pts = obj.mesh['node']
@@ -84,18 +81,32 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         x = pts[:, 0]
         y = pts[:, 1]
 
-        plot_image = self.ax.tripcolor(x, y, tri, eit_image)
+        old_plot_image = self.plot_image
+        self.plot_image = self.ax.tripcolor(x, y, tri, eit_image)
 
-        for i, e in enumerate(electrode_indices):
-            self.ax.text(x[e], y[e], str(i + 1), size=12)
-        self.ax.axis('equal')
+        if self.first_plot:
+            artists = []
+            for i, e in enumerate(electrode_indices):
+                self.ax.text(x[e], y[e], str(i + 1), size=12)
+            self.plot_image.axes.set_aspect('equal')
+            self.divider = make_axes_locatable(self.ax)
+            self.color_axis = self.divider.append_axes("right", size="5%", pad=0.1)
+            self.color_axis.yaxis.tick_right()
+            self.cb = self.ax.figure.colorbar(self.plot_image, cax=self.color_axis)
 
-        if self.first:
-            self.ax.figure.colorbar(plot_image)
-            self.first = False
+            artists.append(self.plot_image)
+            artists.append(self.color_axis)
+            self.bm = BlitManager(self.canvas, artists)
+            self.ax.figure.canvas.draw()
+            self.first_plot = False
 
-        self.ax.figure.canvas.draw()
+        else:
+            self.color_axis.clear()
+            self.cb = self.ax.figure.colorbar(self.plot_image, cax=self.color_axis)
+            self.bm.remove_artist(old_plot_image)
+            self.bm.add_artist(self.plot_image)
 
+        self.bm.update()
 
         # elapsed_time = time.time()-start_time
         # print("Plotting time: " + str(elapsed_time))
@@ -119,7 +130,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.reader.set_stopped()
 
         self.reader.start_new(on_start_args=(text,), work_args=(), on_stopped_args=())
-
 
 class Reader(Producer, QtCore.QObject):
     state_signal = QtCore.pyqtSignal(str)
@@ -241,6 +251,83 @@ class PlotterConsumer(Consumer, QtCore.QObject):
                 self.new_data.emit((eit_image, self.eit_obj))
 
         return
+
+
+class BlitManager:
+    def __init__(self, canvas, animated_artists=()):
+        """
+        Parameters
+        ----------
+        canvas : FigureCanvasAgg
+            The canvas to work with, this only works for sub-classes of the Agg
+            canvas which have the `~FigureCanvasAgg.copy_from_bbox` and
+            `~FigureCanvasAgg.restore_region` methods.
+
+        animated_artists : Iterable[Artist]
+            List of the artists to manage
+        """
+        self.canvas = canvas
+        self._bg = None
+        self._artists = []
+
+        for a in animated_artists:
+            self.add_artist(a)
+        # grab the background on every draw
+        self.cid = canvas.mpl_connect("draw_event", self.on_draw)
+
+    def on_draw(self, event):
+        """Callback to register with 'draw_event'."""
+        cv = self.canvas
+        if event is not None:
+            if event.canvas != cv:
+                raise RuntimeError
+        self._bg = cv.copy_from_bbox(cv.figure.bbox)
+        self._draw_animated()
+
+    def add_artist(self, art):
+        """
+        Add an artist to be managed.
+
+        Parameters
+        ----------
+        art : Artist
+
+            The artist to be added.  Will be set to 'animated' (just
+            to be safe).  *art* must be in the figure associated with
+            the canvas this class is managing.
+
+        """
+        if art.figure != self.canvas.figure:
+            raise RuntimeError
+        art.set_animated(True)
+        self._artists.append(art)
+        self._artists.sort(key=lambda a: a.zorder)
+
+    def remove_artist(self, artist):
+        return self._artists.remove(artist)
+
+    def _draw_animated(self):
+        """Draw all of the animated artists."""
+        fig = self.canvas.figure
+        for a in self._artists:
+            fig.draw_artist(a)
+
+    def update(self):
+        """Update the screen with animated artists."""
+        cv = self.canvas
+        fig = cv.figure
+        # paranoia in case we missed the draw event,
+        if self._bg is None:
+            self.on_draw(None)
+        else:
+            # restore the background
+            cv.restore_region(self._bg)
+            # draw all of the animated artists
+            self._draw_animated()
+            # update the GUI state
+            cv.blit(fig.bbox)
+        # let the GUI event loop process anything it has to do
+        cv.flush_events()
 
 
 if __name__ == '__main__':
