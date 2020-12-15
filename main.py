@@ -80,7 +80,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         self.canvas = FigureCanvas(matplotlib.figure.Figure())
         self.plot_axes = self.canvas.figure.subplots()
-        toolbar = NavigationToolbar(self.canvas, self.widget, coordinates=True)
+        toolbar = NavigationToolbar(self.canvas, self.canvas, coordinates=True)
 
         self.verticalLayout.addWidget(self.canvas)
         self.verticalLayout.addWidget(toolbar)
