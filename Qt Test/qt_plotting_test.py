@@ -13,8 +13,6 @@ text_coords = [[1, 0], [.81, .59], [.31, .95], [-.31, .95], [-.81, .59],
 
 n_angles = 36
 n_radii = 8
-# n_angles = 100
-# n_radii = 200
 min_radius = 0.25
 radii = np.linspace(min_radius, 1.05, n_radii)
 
@@ -28,7 +26,7 @@ triang = tri.Triangulation(x, y)
 triang.set_mask(np.hypot(x[triang.triangles].mean(axis=1),
                          y[triang.triangles].mean(axis=1))
                 < min_radius)
-# ---------------------------------------------------------------------------
+# -------------------------------------------------------------------------------
 
 
 class MainWindow(QtWidgets.QMainWindow):
