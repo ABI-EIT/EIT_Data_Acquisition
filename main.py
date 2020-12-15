@@ -1,6 +1,6 @@
 import sys
 import numpy as np
-from PyQt5 import QtWidgets, uic, QtCore, QtGui
+from PyQt5 import QtWidgets, uic
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_qt5agg import (
     FigureCanvasQTAgg as FigureCanvas,
@@ -9,25 +9,22 @@ from matplotlib.backends.backend_qt5agg import (
 import matplotlib
 import matplotlib.pyplot
 from mpl_toolkits.axes_grid1 import make_axes_locatable
-from matplotlib.animation import FuncAnimation
 from abi_pyeit.app.eit import *
-import pyvisa
-from thread_helpers.worker import Producer, Consumer
-import threading
 import time
-import codecs
-import matplotlib.tri as tri
+from background_workers import *
 
 Ui_MainWindow, QMainWindow = uic.loadUiType("layout/layout.ui")
 
 # default_pickle = "configuration/mesha06_bumpychestslice_pickle_dist1_step1"
 default_pickle = "configuration/mesha06_bumpychestslice_pickle"
 default_conf = "configuration/conf.json"
-default_baud_rate = 115200
-frame_start_char = "m"
-read_timeout = 10000
-read_termination_char = "\n"
-encoding = "latin-1"  # We sometimes get bytes from the spectra that aren't ascii or utf-8. Not sure what they are. Haven't seen it not work with this yet
+spectra_configuration = {
+    "baud": 115200,
+    "frame_start_char": "m",
+    "read_timeout": 10000,
+    "read_termination_char": "\n",
+    "encoding": "latin-1"
+}
 
 
 class MainWindow(QMainWindow, Ui_MainWindow):
@@ -36,71 +33,89 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.first_plot = True
         self.setupUi(self)
         self.canvas = None
-        self.toolbar = None
-        self.ax = None
+        self.plot_axes = None
         self.populate_devices()
         self.reader = Reader()
         self.data_writer = DataWriter()
         self.plotter = PlotterConsumer()
-        self.bm = None
-        self.add_plot()
         self.conf = default_conf
         self.initial_background = None
-        self.cb = None
-        self.plot_image = None
-        self.divider = None
         self.color_axis = None
+
+        self.comboBox.currentTextChanged.connect(self.change_device)
+        self.startRecordingButton.clicked.connect(lambda: self.start_recording(self.dataFilePrefixTextEdit.toPlainText(), ""))
+        self.stopRecordingButton.clicked.connect(self.stop_recording)
 
         self.eit_obj = self.initialize_eit_obj(default_pickle, self.conf)
 
         self.set_background_button.clicked.connect(lambda: self.plotter.set_background(self.plotter.get_current_frame()))
         self.clear_background_button.clicked.connect(lambda: self.plotter.set_background(None))
 
-    def initialize_eit_obj(self, pickle, conf):
+    def start_recording(self, prefix, reader):
+        print("start recording with prefix: %s" % prefix)
+        self.stopRecordingButton.setVisible(True)
+        self.startRecordingButton.setVisible(False)
+        # Start consumer to save frames
+        # Create file to save data in. Take text from data file prefix
+        # swap start recording button for stop recording button
+        # Dialog?
+        pass
+
+    def stop_recording(self):
+        self.stopRecordingButton.setVisible(False)
+        self.startRecordingButton.setVisible(True)
+
+    @staticmethod
+    def initialize_eit_obj(eit_pickle, conf):
         conf = load_conf(conf)
         setup = conf["setup"]
 
-        eit_obj = unpickle_eit(pickle)
+        eit_obj = unpickle_eit(eit_pickle)
         eit_obj.setup(p=setup["p"], lamb=setup["lamb"], method=setup["method"])
 
         return eit_obj
 
     def add_plot(self):
+        self.placeholderWidget.setVisible(False)
+
         self.canvas = FigureCanvas(matplotlib.figure.Figure())
-        self.ax = self.canvas.figure.subplots()
-        self.toolbar = NavigationToolbar(self.canvas, self.widget, coordinates=True)
+        self.plot_axes = self.canvas.figure.subplots()
+        toolbar = NavigationToolbar(self.canvas, self.widget, coordinates=True)
 
         self.verticalLayout.addWidget(self.canvas)
-        self.verticalLayout.addWidget(self.toolbar)
+        self.verticalLayout.addWidget(toolbar)
 
     def update_plot(self, triangulation, eit_image, electrode_points):
         start_time = time.time()
 
-        self.ax.clear()
+        if self.first_plot:
+            self.add_plot()
 
-        self.plot_image = self.ax.tripcolor(triangulation, eit_image)
-        self.plot_image.axes.set_aspect('equal')
+        self.plot_axes.clear()
+
+        plot_image = self.plot_axes.tripcolor(triangulation, eit_image)
+        plot_image.axes.set_aspect('equal')
         tripcolor_done = time.time()
 
         for i, e in enumerate(electrode_points):
-            self.ax.text(e[0], e[1], str(i + 1), size=12)
+            self.plot_axes.text(e[0], e[1], str(i + 1), size=12)
 
         electrode_labels_done = time.time()
 
         if self.first_plot:
-            self.divider = make_axes_locatable(self.ax)
-            self.color_axis = self.divider.append_axes("right", size="5%", pad=0.1)
+            divider = make_axes_locatable(self.plot_axes)
+            self.color_axis = divider.append_axes("right", size="5%", pad=0.1)
             self.color_axis.yaxis.tick_right()
-            self.cb = self.ax.figure.colorbar(self.plot_image, cax=self.color_axis)
-            self.first_plot = False
+            self.plot_axes.figure.colorbar(plot_image, cax=self.color_axis)
 
         else:
             self.color_axis.clear()
-            self.cb = self.ax.figure.colorbar(self.plot_image, cax=self.color_axis)
+            self.plot_axes.figure.colorbar(plot_image, cax=self.color_axis)
 
         colorbar_done = time.time()
 
-        self.ax.figure.canvas.draw()
+        self.plot_axes.figure.canvas.draw()
+        self.first_plot = False
 
         canvas_draw_done = time.time()
 
@@ -110,7 +125,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         colorbar_time = colorbar_done - electrode_labels_done
         canvas_draw_time = canvas_draw_done - colorbar_done
 
-        print("Plotting time total: %.2fs, tripcolor: %.2fs, elec labels: %.2fs, colorbar: %.2fs, canvas draw: %.2fs" % (total_time, tripcolor_time, electrode_labels_time, colorbar_time, canvas_draw_time))
+        # print("Plotting time total: %.2fs, tripcolor: %.2fs, elec labels: %.2fs, colorbar: %.2fs, canvas draw: %.2fs" % (total_time, tripcolor_time, electrode_labels_time, colorbar_time, canvas_draw_time))
 
     def populate_devices(self):
         self.comboBox.addItems(pyvisa.ResourceManager().list_resources())
@@ -130,138 +145,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         if self.reader.get_state() != self.reader.stopped:
             self.reader.set_stopped()
 
-        self.reader.start_new(on_start_args=(text,), work_args=(), on_stopped_args=())
-
-
-class Reader(Producer, QtCore.QObject):
-    state_signal = QtCore.pyqtSignal(str)
-
-    def __init__(self):
-        Producer.__init__(self)
-        QtCore.QObject.__init__(self)
-        self.device = None
-
-    def on_start(self, device_name):
-        self.device = pyvisa.ResourceManager().open_resource(device_name)
-        self.device.timeout = read_timeout
-        self.device.baud_rate = default_baud_rate
-        self.device.encoding = encoding
-        self.device.flush(pyvisa.resources.resource.constants.VI_IO_IN_BUF)
-        self.device.read_termination = read_termination_char
-
-    def on_stopped(self, on_stopped_message):
-        if self.device is not None:
-            pyvisa.ResourceManager()  # Need to instatiate this here or resource will become invalid before we can close it. Not sure why
-            try:
-                self.device.close()
-            except pyvisa.errors.VisaIOError as e:
-                print(e)
-                pass
-        pass
-
-    def producer_work(self, *args):
-        try:
-            data = self.device.read()
-            if data[0] != frame_start_char:
-                return None
-        except pyvisa.errors.VisaIOError as e:
-            print(e)
-            return None
-        except UnicodeDecodeError as e:
-            print(e)
-            return None
-        return data
-
-    def on_state_changed(self, state):
-        self.state_signal.emit(state)
-
-
-class DataWriter(Consumer, QtCore.QObject):
-    state_signal = QtCore.pyqtSignal(str)
-    new_data = QtCore.pyqtSignal(str)
-
-    def __init__(self):
-        Consumer.__init__(self)
-        QtCore.QObject.__init__(self)
-
-    def on_start(self, *args):
-        pass
-
-    def on_stopped(self, *args):
-        pass
-
-    def consumer_work(self, item, *args):
-        if item is not None:
-            self.new_data.emit(item)
-
-
-class PlotterConsumer(Consumer, QtCore.QObject):
-    state_signal = QtCore.pyqtSignal(str)
-    new_data = QtCore.pyqtSignal(tuple)
-    eit_obj = None
-    conf = None
-
-    background_lock = threading.Lock()
-    background = None
-
-    current_frame_lock = threading.Lock()
-    current_frame = None
-
-    def __init__(self):
-        Consumer.__init__(self)
-        QtCore.QObject.__init__(self)
-
-    def on_start(self, eit_obj, conf, initial_background):
-        self.eit_obj = eit_obj
-        self.conf = load_conf(conf)
-        if initial_background is not None:
-            self.background = load_oeit_data(initial_background)[0]
-        else:
-            self.background = None
-
-    def set_background(self, background):
-        self.background_lock.acquire()
-        self.background = background
-        self.background_lock.release()
-
-    def get_background(self):
-        self.background_lock.acquire()
-        background = self.background
-        self.background_lock.release()
-        return background
-
-    def set_current_frame(self, frame):
-        self.current_frame_lock.acquire()
-        self.current_frame = frame
-        self.current_frame_lock.release()
-
-    def get_current_frame(self):
-        self.current_frame_lock.acquire()
-        current_frame = self.current_frame
-        self.current_frame_lock.release()
-        return current_frame
-
-    def on_stopped(self, *args):
-        pass
-
-    def consumer_work(self, item, *args):
-        if item is not None:
-            data = parse_oeit_line(item)
-            if data is not None:
-                self.set_current_frame(data)
-                eit_image = process_frame(self.eit_obj, data, self.conf, self.get_background())
-
-                pts = self.eit_obj.mesh['node']
-                triangles = self.eit_obj.mesh['element']
-                x = pts[:, 0]
-                y = pts[:, 1]
-                triangulation = tri.Triangulation(x, y, triangles=triangles)
-
-                electrode_points = [(x[e],y[e]) for e in self.eit_obj.el_pos]
-
-                self.new_data.emit((triangulation, eit_image, electrode_points))
-
-        return
+        self.reader.start_new(on_start_args=(text, spectra_configuration), work_args=(), on_stopped_args=())
 
 
 if __name__ == '__main__':
@@ -270,8 +154,6 @@ if __name__ == '__main__':
     dw = QtWidgets.QDesktopWidget()
 
     main_window.resize(dw.availableGeometry(dw).size() * 0.7)
-
-    main_window.comboBox.currentTextChanged.connect(main_window.change_device)
 
     main_window.show()
     app.exec()
