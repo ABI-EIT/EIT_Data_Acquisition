@@ -28,7 +28,7 @@ class Worker:
         self.lock.release()
         return state
 
-    def start_new(self, on_start_args, work_args, on_stopped_args):
+    def start_new(self, on_start_args=(), work_args=(), on_stopped_args=()):
         if self.worker_thread is not None:
             self.set_stopped()
             while self.worker_thread.is_alive():
@@ -63,10 +63,13 @@ class Producer(Worker):
     def add_subscriber(self, queue):
         self.queues.append(queue)
 
-    def work(self, on_start_args, work_args, on_stopped_args):
+    def remove_subscriber(self, queue):
+        self.queues.remove(queue)
+
+    def work(self, on_start_args=(), work_args=(), on_stopped_args=()):
         self.on_state_changed(self.get_state())
         self.on_start(*on_start_args)
-        while self.state != self.stopped:
+        while self.get_state() != self.stopped:
             result = self.producer_work(*work_args)
             for queue in self.queues:
                 queue.put(result)
@@ -86,12 +89,17 @@ class Consumer(Worker):
         super().__init__()
         self.queue = queue.Queue()
 
-    def work(self,  on_start_args, work_args, on_stopped_args):
+    def work(self,  on_start_args=(), work_args=(), on_stopped_args=()):
         self.on_state_changed(self.get_state())
         self.on_start(*on_start_args)
-        while self.state != self.stopped:
-            item = self.queue.get()
-            self.consumer_work(item, *work_args)
+        while 1:  # Continuously check for both state change and new item in queue
+            if self.get_state() == self.stopped:
+                break
+            if not self.queue.empty():
+                item = self.queue.get()
+                self.consumer_work(item, *work_args)
+            time.sleep(0.00001)  # Yield to thread scheduler
+
         self.on_state_changed(self.get_state())
         self.on_stopped(*on_stopped_args)
 
