@@ -160,12 +160,12 @@
           <item>
            <widget class="QLabel" name="label">
             <property name="text">
-             <string>Data File Prefix</string>
+             <string>Data File Suffix</string>
             </property>
            </widget>
           </item>
           <item>
-           <widget class="QTextEdit" name="dataFilePrefixTextEdit">
+           <widget class="QTextEdit" name="dataFileSuffixTextEdit">
             <property name="sizePolicy">
              <sizepolicy hsizetype="Expanding" vsizetype="Minimum">
               <horstretch>0</horstretch>

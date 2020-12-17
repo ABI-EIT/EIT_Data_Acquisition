@@ -4,6 +4,8 @@ import matplotlib.tri as tri
 import pyvisa
 import threading
 from abi_pyeit.app.eit import load_oeit_data, load_conf, parse_oeit_line, process_frame
+import os
+from datetime import datetime
 
 
 class Reader(Producer, QtCore.QObject):
@@ -70,7 +72,7 @@ class DataWriter(Consumer, QtCore.QObject):
             self.new_data.emit(item)
 
 
-class PlotterConsumer(Consumer, QtCore.QObject):
+class EITProcessor(Consumer, QtCore.QObject):
     state_signal = QtCore.pyqtSignal(str)
     new_data = QtCore.pyqtSignal(tuple)
     eit_obj = None
@@ -140,11 +142,34 @@ class PlotterConsumer(Consumer, QtCore.QObject):
 
 
 class DataSaver(Consumer):
-    def on_start(self, *args):
-        pass
+    def __init__(self):
+        Consumer.__init__(self)
+        self.file = None
+
+    def on_start(self, suffix, data_saving_configuration):
+        directory = data_saving_configuration["directory"]
+        date_format = data_saving_configuration["format"]
+        if suffix == "":
+            suffix = "data"
+
+        if not os.path.exists(directory):
+            os.mkdir(data_saving_configuration["directory"])
+
+        file_name = datetime.now().strftime(date_format) + "_" + suffix
+        addition = ""
+        ext = ".txt"
+
+        i = 1
+        while os.path.exists(directory + file_name + addition + ext):
+            addition = "_" + str(i)
+            i += 1
+
+        self.file = open(directory + file_name + addition + ext, "x")
 
     def on_stopped(self, *args):
-        pass
+        self.file.close()
 
     def consumer_work(self, item, *args):
-        pass
+        if item is not None:
+            self.file.write(str(item))
+            self.file.flush()
