@@ -12,6 +12,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from abi_pyeit.app.eit import *
 import time
 from background_workers import *
+from Toaster import Toaster
 
 Ui_MainWindow, QMainWindow = uic.loadUiType("layout/layout.ui")
 
@@ -26,7 +27,7 @@ spectra_configuration = {
     "encoding": "latin-1"
 }
 data_saving_configuration = {
-    "directory": "./data/",
+    "directory": "data/",
     "format": "%Y-%m-%dT%H_%M",
     "default_suffix": "data"
 }
@@ -54,8 +55,16 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         self.eit_obj = self.initialize_eit_obj(default_pickle, self.conf)
 
-        self.set_background_button.clicked.connect(lambda: self.eit_processor.set_background(self.eit_processor.get_current_frame()))
+        self.set_background_button.clicked.connect(self.set_background)
         self.clear_background_button.clicked.connect(lambda: self.eit_processor.set_background(None))
+
+    def set_background(self):
+        current_frame = self.eit_processor.get_current_frame()
+        self.eit_processor.set_background(current_frame)
+        background_file = DataSaver.create_unique_save_file("background", data_saving_configuration)
+        background_file.write(str(current_frame))
+        background_file.close()
+        Toaster.showMessage(self, "Background frame saved in: " + background_file.name)
 
     def start_recording(self, suffix, reader):
         self.stopRecordingButton.setVisible(True)
@@ -64,12 +73,17 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.data_saver.start_new(on_start_args=(suffix, data_saving_configuration))
         reader.add_subscriber(self.data_saver.queue)
 
+        message = "Started recording in: " + self.data_saver.get_filename()
+
+        Toaster.showMessage(self, message)
+
     def stop_recording(self, reader):
         self.stopRecordingButton.setVisible(False)
         self.startRecordingButton.setVisible(True)
 
         self.data_saver.set_stopped()
         reader.remove_subscriber(self.data_saver.queue)
+        Toaster.showMessage(self, "Stopped recording")
 
     # This should be in EITProcessor
     @staticmethod

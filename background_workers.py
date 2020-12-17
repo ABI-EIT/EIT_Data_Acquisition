@@ -145,12 +145,16 @@ class DataSaver(Consumer):
     def __init__(self):
         Consumer.__init__(self)
         self.file = None
+        self.file_lock = threading.Lock()
 
-    def on_start(self, suffix, data_saving_configuration):
+    @staticmethod
+    def create_unique_save_file(suffix, data_saving_configuration):
         directory = data_saving_configuration["directory"]
         date_format = data_saving_configuration["format"]
+        default_suffix = data_saving_configuration["default_suffix"]
+
         if suffix == "":
-            suffix = "data"
+            suffix = default_suffix
 
         if not os.path.exists(directory):
             os.mkdir(data_saving_configuration["directory"])
@@ -164,12 +168,27 @@ class DataSaver(Consumer):
             addition = "_" + str(i)
             i += 1
 
-        self.file = open(directory + file_name + addition + ext, "x")
+        return open(directory + file_name + addition + ext, "x")
+
+    def on_start(self, suffix, data_saving_configuration):
+        self.file_lock.acquire()
+        self.file = self.create_unique_save_file(suffix, data_saving_configuration)
+        self.file_lock.release()
 
     def on_stopped(self, *args):
+        self.file_lock.acquire()
         self.file.close()
+        self.file_lock.release()
+
+    def get_filename(self):
+        self.file_lock.acquire()
+        filename = self.file.name
+        self.file_lock.release()
+        return filename
 
     def consumer_work(self, item, *args):
         if item is not None:
+            self.file_lock.acquire()
             self.file.write(str(item))
             self.file.flush()
+            self.file_lock.release()
