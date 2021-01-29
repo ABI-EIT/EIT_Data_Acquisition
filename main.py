@@ -31,6 +31,10 @@ data_saving_configuration = {
     "format": "%Y-%m-%dT%H_%M",
     "default_suffix": "data"
 }
+spectra_data_format = {
+    "prefix": "magnitudes:        ",
+    "separator": ",       "
+}
 
 
 class MainWindow(QMainWindow, Ui_MainWindow):
@@ -62,7 +66,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         current_frame = self.eit_processor.get_current_frame()
         self.eit_processor.set_background(current_frame)
         background_file = DataSaver.create_unique_save_file("background", data_saving_configuration)
-        background_file.write(str(current_frame))
+        background_file.write(spectra_data_format["prefix"] + "".join(("{}"+spectra_data_format["separator"]).format(item) for item in current_frame))
         background_file.close()
         Toaster.showMessage(self, "Background frame saved in: " + background_file.name)
 
