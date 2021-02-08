@@ -29,7 +29,8 @@ spectra_configuration = {
 data_saving_configuration = {
     "directory": "data/",
     "format": "%Y-%m-%dT%H_%M",
-    "default_suffix": "data"
+    "default_suffix": "data",
+    "timestamp_format": "raw"
 }
 spectra_data_format = {
     "prefix": "magnitudes:        ",

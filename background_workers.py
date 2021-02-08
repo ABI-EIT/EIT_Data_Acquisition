@@ -6,6 +6,7 @@ import threading
 from abi_pyeit.app.eit import load_oeit_data, load_conf, parse_oeit_line, process_frame
 import os
 from datetime import datetime
+from time import time
 
 
 class Reader(Producer, QtCore.QObject):
@@ -146,6 +147,7 @@ class DataSaver(Consumer):
         Consumer.__init__(self)
         self.file = None
         self.file_lock = threading.Lock()
+        self.data_saving_configuration = None
 
     @staticmethod
     def create_unique_save_file(suffix, data_saving_configuration):
@@ -173,6 +175,7 @@ class DataSaver(Consumer):
     def on_start(self, suffix, data_saving_configuration):
         self.file_lock.acquire()
         self.file = self.create_unique_save_file(suffix, data_saving_configuration)
+        self.data_saving_configuration = data_saving_configuration
         self.file_lock.release()
 
     def on_stopped(self, *args):
@@ -189,6 +192,15 @@ class DataSaver(Consumer):
     def consumer_work(self, item, *args):
         if item is not None:
             self.file_lock.acquire()
-            self.file.write(str(item))
+
+            if "timestamp_format" in self.data_saving_configuration and self.data_saving_configuration["timestamp_format"] is not None:
+                if self.data_saving_configuration["timestamp_format"] == "raw":
+                    output_string = str(time()) + " " + str(item)
+                else:
+                    output_string = time.strftime(self.data_saving_configuration["timestamp_format"]) + " " + str(item)
+            else:
+                output_string = str(item)
+
+            self.file.write(output_string)
             self.file.flush()
             self.file_lock.release()
