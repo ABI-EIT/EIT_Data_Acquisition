@@ -1,7 +1,7 @@
 {
   "setup": {
     "p": 0.5,
-    "lamb": 0.01,
+    "lamb": 0.4,
     "method": "kotre"
   },
 

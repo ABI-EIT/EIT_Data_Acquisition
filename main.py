@@ -16,8 +16,7 @@ from Toaster import Toaster
 
 Ui_MainWindow, QMainWindow = uic.loadUiType("layout/layout.ui")
 
-# default_pickle = "configuration/mesha06_bumpychestslice_pickle_dist1_step1"
-default_pickle = "configuration/mesha06_bumpychestslice_pickle"
+default_pickle = "configuration/mesha06_bumpychestslice_pickle_dist3"
 default_conf = "configuration/conf.json"
 spectra_configuration = {
     "baud": 115200,
