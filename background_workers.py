@@ -16,16 +16,16 @@ class Reader(Producer, QtCore.QObject):
         Producer.__init__(self)
         QtCore.QObject.__init__(self)
         self.device = None
-        self.spectra_configuration = None
+        self.configuration = None
 
-    def on_start(self, device_name, spectra_configuration):
-        self.spectra_configuration = spectra_configuration
+    def on_start(self, device_name, configuration):
+        self.configuration = configuration
         self.device = pyvisa.ResourceManager().open_resource(device_name)
-        self.device.timeout = spectra_configuration["read_timeout"]
-        self.device.baud_rate = spectra_configuration["baud"]
-        self.device.encoding = spectra_configuration["encoding"]
+        self.device.timeout = configuration["read_timeout"]
+        self.device.baud_rate = configuration["baud"]
+        self.device.encoding = configuration["encoding"]
         self.device.flush(pyvisa.resources.resource.constants.VI_IO_IN_BUF)
-        self.device.read_termination = spectra_configuration["read_termination_char"]
+        self.device.read_termination = configuration["read_termination_char"]
 
     def on_stopped(self, on_stopped_message):
         if self.device is not None:
@@ -40,7 +40,7 @@ class Reader(Producer, QtCore.QObject):
     def producer_work(self, *args):
         try:
             data = self.device.read()
-            if data[0] != self.spectra_configuration["frame_start_char"]:
+            if self.configuration["frame_start_char"] is not None and data[0] != self.configuration["frame_start_char"]:
                 return None
         except pyvisa.errors.VisaIOError as e:
             print(e)
@@ -195,9 +195,9 @@ class DataSaver(Consumer):
 
             if "timestamp_format" in self.data_saving_configuration and self.data_saving_configuration["timestamp_format"] is not None:
                 if self.data_saving_configuration["timestamp_format"] == "raw":
-                    output_string = str(time()) + " " + str(item)
+                    output_string = str(time()) + self.data_saving_configuration["delimiter"] + str(item)
                 else:
-                    output_string = time.strftime(self.data_saving_configuration["timestamp_format"]) + " " + str(item)
+                    output_string = time.strftime(self.data_saving_configuration["timestamp_format"]) + self.data_saving_configuration["delimiter"] + str(item)
             else:
                 output_string = str(item)
 

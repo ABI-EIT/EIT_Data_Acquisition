@@ -14,7 +14,7 @@ import time
 from background_workers import *
 from Toaster import Toaster
 
-Ui_MainWindow, QMainWindow = uic.loadUiType("layout/layout.ui")
+Ui_MainWindow, QMainWindow = uic.loadUiType("layout/layout_with_flow.ui")
 
 default_pickle = "configuration/mesha06_bumpychestslice_pickle_dist3"
 default_conf = "configuration/conf.json"
@@ -25,11 +25,26 @@ spectra_configuration = {
     "read_termination_char": "\n",
     "encoding": "latin-1"
 }
+flow_configuration = {
+    "baud": 19200,
+    "frame_start_char": None,
+    "read_timeout": 10000,
+    "read_termination_char": "\n",
+    "encoding": "utf-8"
+}
 data_saving_configuration = {
     "directory": "data/",
-    "format": "%Y-%m-%dT%H_%M",
+    "format": "%Y-%m-%dT%H_%M_eit",
     "default_suffix": "data",
-    "timestamp_format": "raw"
+    "timestamp_format": "raw",
+    "delimiter": "\t"
+}
+flow_data_saving_configuration = {
+    "directory": "data/",
+    "format": "%Y-%m-%dT%H_%M_flow",
+    "default_suffix": "data",
+    "timestamp_format": "raw",
+    "delimiter": "\t"
 }
 spectra_data_format = {
     "prefix": "magnitudes:        ",
@@ -46,9 +61,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.plot_axes = None
         self.populate_devices()
         self.reader = Reader()
+        self.flow_reader = Reader()
         self.data_writer = DataWriter()
         self.eit_processor = EITProcessor()
         self.data_saver = DataSaver()
+        self.flow_data_saver = DataSaver()
         self.conf = default_conf
         self.initial_background = None
         self.color_axis = None
@@ -56,6 +73,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.comboBox.currentTextChanged.connect(self.change_device)
         self.startRecordingButton.clicked.connect(lambda: self.start_recording(self.dataFileSuffixTextEdit.toPlainText(), self.reader))
         self.stopRecordingButton.clicked.connect(lambda: self.stop_recording(self.reader))
+
+        self.comboBoxFlow.currentTextChanged.connect(self.change_flow_device)
+        self.startRecordingButtonFlow.clicked.connect(lambda: self.start_recording_flow(self.dataFileSuffixTextEditFlow.toPlainText(), self.flow_reader))
+        self.stopRecordingButtonFlow.clicked.connect(lambda: self.stop_recording_flow(self.flow_reader))
 
         self.eit_obj = self.initialize_eit_obj(default_pickle, self.conf)
 
@@ -81,6 +102,17 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         Toaster.showMessage(self, message)
 
+    def start_recording_flow(self, suffix, reader):
+        self.stopRecordingButtonFlow.setVisible(True)
+        self.startRecordingButtonFlow.setVisible(False)
+
+        self.flow_data_saver.start_new(on_start_args=(suffix, flow_data_saving_configuration))
+        reader.add_subscriber(self.flow_data_saver.queue)
+
+        message = "Started recording flow in: " + self.flow_data_saver.get_filename()
+
+        Toaster.showMessage(self, message)
+
     def stop_recording(self, reader):
         self.stopRecordingButton.setVisible(False)
         self.startRecordingButton.setVisible(True)
@@ -88,6 +120,14 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.data_saver.set_stopped()
         reader.remove_subscriber(self.data_saver.queue)
         Toaster.showMessage(self, "Stopped recording")
+
+    def stop_recording_flow(self, reader):
+        self.stopRecordingButtonFlow.setVisible(False)
+        self.startRecordingButtonFlow.setVisible(True)
+
+        self.flow_data_saver.set_stopped()
+        reader.remove_subscriber(self.flow_data_saver.queue)
+        Toaster.showMessage(self, "Stopped recording flow")
 
     # This should be in EITProcessor
     @staticmethod
@@ -139,6 +179,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def populate_devices(self):
         self.comboBox.addItems(pyvisa.ResourceManager().list_resources())
         self.comboBox.setCurrentIndex(-1)
+        self.comboBoxFlow.addItems(pyvisa.ResourceManager().list_resources())
+        self.comboBoxFlow.setCurrentIndex(-1)
 
     def change_device(self, text):
         if self.data_writer.get_state() != self.data_writer.started:
@@ -155,6 +197,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.reader.set_stopped()
 
         self.reader.start_new(on_start_args=(text, spectra_configuration))
+
+    def change_flow_device(self, text):
+        if self.flow_reader.get_state() != self.flow_reader.stopped:
+            self.flow_reader.set_stopped()
+
+        self.flow_reader.start_new(on_start_args=(text, flow_configuration))
 
 
 if __name__ == '__main__':
