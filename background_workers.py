@@ -154,6 +154,7 @@ class DataSaver(Consumer):
         directory = data_saving_configuration["directory"]
         date_format = data_saving_configuration["format"]
         default_suffix = data_saving_configuration["default_suffix"]
+        ext = data_saving_configuration["extension"]
 
         if suffix == "":
             suffix = default_suffix
@@ -163,7 +164,6 @@ class DataSaver(Consumer):
 
         file_name = datetime.now().strftime(date_format) + "_" + suffix
         addition = ""
-        ext = ".txt"
 
         i = 1
         while os.path.exists(directory + file_name + addition + ext):

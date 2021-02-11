@@ -37,14 +37,16 @@ data_saving_configuration = {
     "format": "%Y-%m-%dT%H_%M_eit",
     "default_suffix": "data",
     "timestamp_format": "raw",
-    "delimiter": "\t"
+    "delimiter": "\t",
+    "extension": ".txt"
 }
 flow_data_saving_configuration = {
     "directory": "data/",
     "format": "%Y-%m-%dT%H_%M_flow",
     "default_suffix": "data",
     "timestamp_format": "raw",
-    "delimiter": "\t"
+    "delimiter": "\t",
+    "extension": ".txt"
 }
 spectra_data_format = {
     "prefix": "magnitudes:        ",
