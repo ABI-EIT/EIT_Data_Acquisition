@@ -36,17 +36,10 @@ data_saving_configuration = {
     "directory": "data/",
     "format": "%Y-%m-%dT%H_%M_eit",
     "default_suffix": "data",
+    "columns": ["Time", "Tag", "Flow", "EIT"],
     "timestamp_format": "raw",
-    "delimiter": "\t",
-    "extension": ".txt"
-}
-flow_data_saving_configuration = {
-    "directory": "data/",
-    "format": "%Y-%m-%dT%H_%M_flow",
-    "default_suffix": "data",
-    "timestamp_format": "raw",
-    "delimiter": "\t",
-    "extension": ".txt"
+    "delimiter": ",",
+    "extension": ".csv"
 }
 spectra_data_format = {
     "prefix": "magnitudes:        ",
@@ -62,23 +55,20 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.canvas = None
         self.plot_axes = None
         self.populate_devices()
-        self.reader = Reader()
-        self.flow_reader = Reader()
+        self.reader = Reader(tag="EIT")
+        self.flow_reader = Reader(tag="Flow")
         self.data_writer = DataWriter()
         self.eit_processor = EITProcessor()
         self.data_saver = DataSaver()
-        self.flow_data_saver = DataSaver()
         self.conf = default_conf
         self.initial_background = None
         self.color_axis = None
 
         self.comboBox.currentTextChanged.connect(self.change_device)
-        self.startRecordingButton.clicked.connect(lambda: self.start_recording(self.dataFileSuffixTextEdit.toPlainText(), self.reader))
-        self.stopRecordingButton.clicked.connect(lambda: self.stop_recording(self.reader))
+        self.startRecordingButton.clicked.connect(lambda: self.start_recording(self.dataFileSuffixTextEdit.toPlainText()))
+        self.stopRecordingButton.clicked.connect(self.stop_recording)
 
         self.comboBoxFlow.currentTextChanged.connect(self.change_flow_device)
-        self.startRecordingButtonFlow.clicked.connect(lambda: self.start_recording_flow(self.dataFileSuffixTextEditFlow.toPlainText(), self.flow_reader))
-        self.stopRecordingButtonFlow.clicked.connect(lambda: self.stop_recording_flow(self.flow_reader))
 
         self.eit_obj = self.initialize_eit_obj(default_pickle, self.conf)
 
@@ -93,43 +83,31 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         background_file.close()
         Toaster.showMessage(self, "Background frame saved in: " + background_file.name)
 
-    def start_recording(self, suffix, reader):
+    def start_recording(self, suffix):
         self.stopRecordingButton.setVisible(True)
         self.startRecordingButton.setVisible(False)
 
         self.data_saver.start_new(on_start_args=(suffix, data_saving_configuration))
-        reader.add_subscriber(self.data_saver.queue)
+
+        self.flow_reader.add_subscriber(self.data_saver.queue)
+        self.reader.add_subscriber(self.data_saver.queue)
 
         message = "Started recording in: " + self.data_saver.get_filename()
 
         Toaster.showMessage(self, message)
 
-    def start_recording_flow(self, suffix, reader):
-        self.stopRecordingButtonFlow.setVisible(True)
-        self.startRecordingButtonFlow.setVisible(False)
-
-        self.flow_data_saver.start_new(on_start_args=(suffix, flow_data_saving_configuration))
-        reader.add_subscriber(self.flow_data_saver.queue)
-
-        message = "Started recording flow in: " + self.flow_data_saver.get_filename()
-
-        Toaster.showMessage(self, message)
-
-    def stop_recording(self, reader):
+    def stop_recording(self):
         self.stopRecordingButton.setVisible(False)
         self.startRecordingButton.setVisible(True)
 
+        # we want the saver to stop if it is no longer subscribing to anything
+        # this is only necessary if the datastreams can be stopped separately though
+        # if so we need to make the producers send a message to consumers when they add or remove a subscription
+        # then the consumer will know if it has been unsubscribed from everything
         self.data_saver.set_stopped()
-        reader.remove_subscriber(self.data_saver.queue)
+        self.reader.remove_subscriber(self.data_saver.queue)
+        self.flow_reader.remove_subscriber(self.data_saver.queue)
         Toaster.showMessage(self, "Stopped recording")
-
-    def stop_recording_flow(self, reader):
-        self.stopRecordingButtonFlow.setVisible(False)
-        self.startRecordingButtonFlow.setVisible(True)
-
-        self.flow_data_saver.set_stopped()
-        reader.remove_subscriber(self.flow_data_saver.queue)
-        Toaster.showMessage(self, "Stopped recording flow")
 
     # This should be in EITProcessor
     @staticmethod

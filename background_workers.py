@@ -7,16 +7,23 @@ from abi_pyeit.app.eit import load_oeit_data, load_conf, parse_oeit_line, proces
 import os
 from datetime import datetime
 from time import time
+import csv
 
 
 class Reader(Producer, QtCore.QObject):
+    """
+        Reader sends messages of type:
+            { "tag": "tag"
+              "data":  data }
+    """
     state_signal = QtCore.pyqtSignal(str)
 
-    def __init__(self):
+    def __init__(self, tag=None):
         Producer.__init__(self)
         QtCore.QObject.__init__(self)
         self.device = None
         self.configuration = None
+        self.tag = tag
 
     def on_start(self, device_name, configuration):
         self.configuration = configuration
@@ -29,7 +36,7 @@ class Reader(Producer, QtCore.QObject):
 
     def on_stopped(self, on_stopped_message):
         if self.device is not None:
-            pyvisa.ResourceManager()  # Need to instatiate this here or resource will become invalid before we can close it. Not sure why
+            pyvisa.ResourceManager()  # Need to instantiate this here or resource will become invalid before we can close it. Not sure why
             try:
                 self.device.close()
             except pyvisa.errors.VisaIOError as e:
@@ -48,7 +55,7 @@ class Reader(Producer, QtCore.QObject):
         except UnicodeDecodeError as e:
             print(e)
             return None
-        return data
+        return {"tag": self.tag, "data": data}
 
     def on_state_changed(self, state):
         self.state_signal.emit(state)
@@ -70,7 +77,7 @@ class DataWriter(Consumer, QtCore.QObject):
 
     def consumer_work(self, item, *args):
         if item is not None:
-            self.new_data.emit(item)
+            self.new_data.emit(item["data"])
 
 
 class EITProcessor(Consumer, QtCore.QObject):
@@ -124,7 +131,7 @@ class EITProcessor(Consumer, QtCore.QObject):
 
     def consumer_work(self, item, *args):
         if item is not None:
-            data = parse_oeit_line(item)
+            data = parse_oeit_line(item["data"])
             if data is not None:
                 self.set_current_frame(data)
                 eit_image = process_frame(self.eit_obj, data, self.conf, self.get_background())
@@ -135,7 +142,7 @@ class EITProcessor(Consumer, QtCore.QObject):
                 y = pts[:, 1]
                 triangulation = tri.Triangulation(x, y, triangles=triangles)
 
-                electrode_points = [(x[e],y[e]) for e in self.eit_obj.el_pos]
+                electrode_points = [(x[e], y[e]) for e in self.eit_obj.el_pos]
 
                 self.new_data.emit((triangulation, eit_image, electrode_points))
 
@@ -146,6 +153,7 @@ class DataSaver(Consumer):
     def __init__(self):
         Consumer.__init__(self)
         self.file = None
+        self.csv_writer = None
         self.file_lock = threading.Lock()
         self.data_saving_configuration = None
 
@@ -170,11 +178,14 @@ class DataSaver(Consumer):
             addition = "_" + str(i)
             i += 1
 
-        return open(directory + file_name + addition + ext, "x")
+        return open(directory + file_name + addition + ext, "x", newline="")
 
     def on_start(self, suffix, data_saving_configuration):
         self.file_lock.acquire()
         self.file = self.create_unique_save_file(suffix, data_saving_configuration)
+        self.csv_writer = csv.writer(self.file, delimiter=data_saving_configuration["delimiter"], quoting=csv.QUOTE_MINIMAL)
+        self.csv_writer.writerow(data_saving_configuration["columns"])
+        # TODO Write file with header section
         self.data_saving_configuration = data_saving_configuration
         self.file_lock.release()
 
@@ -193,14 +204,25 @@ class DataSaver(Consumer):
         if item is not None:
             self.file_lock.acquire()
 
+            # Strip newline characters
+            data = str.rstrip(item["data"])
+
             if "timestamp_format" in self.data_saving_configuration and self.data_saving_configuration["timestamp_format"] is not None:
                 if self.data_saving_configuration["timestamp_format"] == "raw":
-                    output_string = str(time()) + self.data_saving_configuration["delimiter"] + str(item)
+                    time_string = str(time())
                 else:
-                    output_string = time.strftime(self.data_saving_configuration["timestamp_format"]) + self.data_saving_configuration["delimiter"] + str(item)
+                    time_string = time.strftime(self.data_saving_configuration["timestamp_format"])
             else:
-                output_string = str(item)
+                time_string = None
 
-            self.file.write(output_string)
+            columns = self.data_saving_configuration["columns"]
+            output = [None] * len(columns)
+            if "Time" in columns:
+                output[columns.index("Time")] = time_string
+
+            if item["tag"] in columns:
+                output[columns.index(item["tag"])] = data
+
+            self.csv_writer.writerow(output)
             self.file.flush()
             self.file_lock.release()

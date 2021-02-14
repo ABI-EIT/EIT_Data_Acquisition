@@ -13,18 +13,18 @@ class Worker:
 
     def __init__(self):
         self.worker_thread = None
-        self.state = self.stopped
+        self._state = self.stopped
         self.lock = threading.Lock()
         atexit.register(self.set_stopped)
 
     def set_stopped(self):
         self.lock.acquire()
-        self.state = self.stopped
+        self._state = self.stopped
         self.lock.release()
 
     def get_state(self):
         self.lock.acquire()
-        state = self.state
+        state = self._state
         self.lock.release()
         return state
 
@@ -33,7 +33,7 @@ class Worker:
             self.set_stopped()
             while self.worker_thread.is_alive():
                 time.sleep(0)
-        self.state = self.started
+        self._state = self.started
         self.worker_thread = threading.Thread(target=self.work, args=(on_start_args, work_args, on_stopped_args), daemon=True).start()
 
     @abstractmethod
@@ -64,7 +64,8 @@ class Producer(Worker):
         self.queues.append(queue)
 
     def remove_subscriber(self, queue):
-        self.queues.remove(queue)
+        if queue in self.queues:
+            self.queues.remove(queue)
 
     def work(self, on_start_args=(), work_args=(), on_stopped_args=()):
         self.on_state_changed(self.get_state())
