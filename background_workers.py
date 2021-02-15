@@ -8,6 +8,7 @@ import os
 from datetime import datetime
 from time import time
 import csv
+import numpy as np
 
 
 class Reader(Producer, QtCore.QObject):
@@ -76,8 +77,8 @@ class DataWriter(Consumer, QtCore.QObject):
         pass
 
     def consumer_work(self, item, *args):
-        if item is not None:
-            self.new_data.emit(item["data"])
+        if item[0] is not None:
+            self.new_data.emit(item[0]["data"])
 
 
 class EITProcessor(Consumer, QtCore.QObject):
@@ -130,6 +131,7 @@ class EITProcessor(Consumer, QtCore.QObject):
         pass
 
     def consumer_work(self, item, *args):
+        item = item[0]
         if item is not None:
             data = parse_oeit_line(item["data"])
             if data is not None:
@@ -150,8 +152,8 @@ class EITProcessor(Consumer, QtCore.QObject):
 
 
 class DataSaver(Consumer):
-    def __init__(self):
-        Consumer.__init__(self)
+    def __init__(self, buffer_size=1, buffer_timeout=0):
+        Consumer.__init__(self, buffer_size, buffer_timeout)
         self.file = None
         self.csv_writer = None
         self.file_lock = threading.Lock()
@@ -200,29 +202,36 @@ class DataSaver(Consumer):
         self.file_lock.release()
         return filename
 
-    def consumer_work(self, item, *args):
-        if item is not None:
-            self.file_lock.acquire()
+    def consumer_work(self, buffer, *args):
+        buffer = np.Array(buffer)
+        buffer = buffer[buffer != np.array(None)]
 
-            # Strip newline characters
-            data = str.rstrip(item["data"])
+        self.file_lock.acquire()
 
-            if "timestamp_format" in self.data_saving_configuration and self.data_saving_configuration["timestamp_format"] is not None:
-                if self.data_saving_configuration["timestamp_format"] == "raw":
-                    time_string = str(time())
-                else:
-                    time_string = time.strftime(self.data_saving_configuration["timestamp_format"])
+        # # Strip newline characters
+        # data = str.rstrip(item["data"])
+        output_list = []
+
+        if "timestamp_format" in self.data_saving_configuration and self.data_saving_configuration[
+            "timestamp_format"] is not None:
+            if self.data_saving_configuration["timestamp_format"] == "raw":
+                time_string = str(time())
             else:
-                time_string = None
+                time_string = time.strftime(self.data_saving_configuration["timestamp_format"])
+        else:
+            time_string = None
 
+        for item in buffer:
             columns = self.data_saving_configuration["columns"]
             output = [None] * len(columns)
             if "Time" in columns:
                 output[columns.index("Time")] = time_string
 
             if item["tag"] in columns:
-                output[columns.index(item["tag"])] = data
+                output[columns.index(item["tag"])] = item["data"]
 
-            self.csv_writer.writerow(output)
-            self.file.flush()
-            self.file_lock.release()
+            output_list.append(output)
+
+        self.csv_writer.writerows(output_list)
+        self.file.flush()
+        self.file_lock.release()

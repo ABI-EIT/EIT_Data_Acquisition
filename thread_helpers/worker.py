@@ -90,9 +90,13 @@ class Producer(Worker):
 class Consumer(Worker):
     __metaclass__ = ABCMeta
 
-    def __init__(self):
+    def __init__(self, buffer_size=1, buffer_timeout=0):
         super().__init__()
         self.queue = queue.Queue()
+        self.buffer_size = buffer_size
+        self.buffer_timeout = buffer_timeout
+        self.buffer = []
+        self.last_time_worked = None
 
     def stop_at_queue_end(self):
         self.queue.put({"command": "stop"})
@@ -105,9 +109,19 @@ class Consumer(Worker):
                 break
             if not self.queue.empty():
                 item = self.queue.get()
+                self.buffer.append(item)
+
                 if item["command"] == "stop":
+                    # clear the buffer then stop
+                    self.consumer_work(self.buffer, *work_args)
                     self.set_stopped()
                     break
+
+                # if buffer timeout or buffer sizeout, do work on buffer
+                if (time.time() - self.last_time_worked) >= self.buffer_timeout or \
+                        len(self.buffer) >= self.buffer_size:
+                    self.consumer_work(self.buffer, *work_args)
+
                 self.consumer_work(item["data"], *work_args)
             time.sleep(0.00001)  # Yield to thread scheduler
 
@@ -120,4 +134,5 @@ class Consumer(Worker):
         pass
 
     def on_state_changed(self, state):
-        pass
+        if self.get_state() == self.started:
+            self.last_time_worked = time.time()
