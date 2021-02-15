@@ -203,7 +203,7 @@ class DataSaver(Consumer):
         return filename
 
     def consumer_work(self, buffer, *args):
-        buffer = np.Array(buffer)
+        buffer = np.array(buffer)
         buffer = buffer[buffer != np.array(None)]
 
         self.file_lock.acquire()

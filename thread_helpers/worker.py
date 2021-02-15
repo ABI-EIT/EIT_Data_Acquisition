@@ -109,20 +109,24 @@ class Consumer(Worker):
                 break
             if not self.queue.empty():
                 item = self.queue.get()
-                self.buffer.append(item)
+                self.buffer.append(item["data"])
 
                 if item["command"] == "stop":
                     # clear the buffer then stop
+                    self.last_time_worked = time.time()
                     self.consumer_work(self.buffer, *work_args)
+                    self.buffer = []
                     self.set_stopped()
                     break
 
                 # if buffer timeout or buffer sizeout, do work on buffer
                 if (time.time() - self.last_time_worked) >= self.buffer_timeout or \
                         len(self.buffer) >= self.buffer_size:
+                    # print("Saving: delta time = %f, buffer size = %d" % ((time.time() - self.last_time_worked), len(self.buffer)))
+                    self.last_time_worked = time.time()
                     self.consumer_work(self.buffer, *work_args)
+                    self.buffer = []
 
-                self.consumer_work(item["data"], *work_args)
             time.sleep(0.00001)  # Yield to thread scheduler
 
         self.on_state_changed(self.get_state())

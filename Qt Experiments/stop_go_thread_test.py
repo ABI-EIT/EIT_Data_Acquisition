@@ -3,7 +3,7 @@ from PyQt5 import QtWidgets, QtCore
 import threading
 import time
 
-title = "Qt Test"
+title = "Qt Experiments"
 
 class MainWindow(QtWidgets.QMainWindow):
     def __init__(self):
