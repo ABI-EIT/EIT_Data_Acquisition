@@ -73,7 +73,11 @@ class Producer(Worker):
         while self.get_state() != self.stopped:
             result = self.producer_work(*work_args)
             for queue in self.queues:
-                queue.put(result)
+                item = {
+                    "command": None,
+                    "data": result
+                }
+                queue.put(item)
         self.on_state_changed(self.get_state())
         self.on_stopped(self, *on_stopped_args)
 
@@ -90,6 +94,9 @@ class Consumer(Worker):
         super().__init__()
         self.queue = queue.Queue()
 
+    def stop_at_queue_end(self):
+        self.queue.put({"command": "stop"})
+
     def work(self,  on_start_args=(), work_args=(), on_stopped_args=()):
         self.on_state_changed(self.get_state())
         self.on_start(*on_start_args)
@@ -98,7 +105,10 @@ class Consumer(Worker):
                 break
             if not self.queue.empty():
                 item = self.queue.get()
-                self.consumer_work(item, *work_args)
+                if item["command"] == "stop":
+                    self.set_stopped()
+                    break
+                self.consumer_work(item["data"], *work_args)
             time.sleep(0.00001)  # Yield to thread scheduler
 
         self.on_state_changed(self.get_state())

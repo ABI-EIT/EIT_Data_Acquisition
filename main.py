@@ -104,7 +104,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # this is only necessary if the datastreams can be stopped separately though
         # if so we need to make the producers send a message to consumers when they add or remove a subscription
         # then the consumer will know if it has been unsubscribed from everything
-        self.data_saver.set_stopped()
+        # self.data_saver.set_stopped()
+        self.data_saver.stop_at_queue_end()
         self.reader.remove_subscriber(self.data_saver.queue)
         self.flow_reader.remove_subscriber(self.data_saver.queue)
         Toaster.showMessage(self, "Stopped recording")
