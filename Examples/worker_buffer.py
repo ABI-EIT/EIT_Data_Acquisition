@@ -52,7 +52,7 @@ class DataCreator(Producer):
         time.sleep(self.configuration["sleep_time"])
         data = self.configuration["data"]
 
-        return {"tag": self.tag, "data": data}
+        return {"tag": self.tag, "data": data, "timestamp": time.time()}
 
     def on_state_changed(self, state):
         pass

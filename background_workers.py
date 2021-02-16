@@ -14,8 +14,9 @@ import numpy as np
 class Reader(Producer, QtCore.QObject):
     """
         Reader sends messages of type:
-            { "tag": "tag"
-              "data":  data }
+            { "tag": string
+              "data":  any
+              "timestamp": time}
     """
     state_signal = QtCore.pyqtSignal(str)
 
@@ -56,7 +57,7 @@ class Reader(Producer, QtCore.QObject):
         except UnicodeDecodeError as e:
             print(e)
             return None
-        return {"tag": self.tag, "data": data}
+        return {"tag": self.tag, "data": data, "timestamp": time.time()}
 
     def on_state_changed(self, state):
         self.state_signal.emit(state)
@@ -212,16 +213,19 @@ class DataSaver(Consumer):
         # data = str.rstrip(item["data"])
         output_list = []
 
-        if "timestamp_format" in self.data_saving_configuration and self.data_saving_configuration[
-            "timestamp_format"] is not None:
-            if self.data_saving_configuration["timestamp_format"] == "raw":
-                time_string = str(time())
-            else:
-                time_string = time.strftime(self.data_saving_configuration["timestamp_format"])
-        else:
-            time_string = None
-
         for item in buffer:
+
+            timestamp = item["timestamp"]
+
+            if "timestamp_format" in self.data_saving_configuration and self.data_saving_configuration[
+                    "timestamp_format"] is not None:
+                if self.data_saving_configuration["timestamp_format"] == "raw":
+                    time_string = str(timestamp)
+                else:
+                    time_string = timestamp.strftime(self.data_saving_configuration["timestamp_format"])
+            else:
+                time_string = None
+
             columns = self.data_saving_configuration["columns"]
             output = [None] * len(columns)
             if "Time" in columns:
