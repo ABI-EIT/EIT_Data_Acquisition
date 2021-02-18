@@ -63,12 +63,12 @@ class Reader(Producer, QtCore.QObject):
         self.state_signal.emit(state)
 
 
-class DataWriter(Consumer, QtCore.QObject):
+class QueueEmitter(Consumer, QtCore.QObject):
     state_signal = QtCore.pyqtSignal(str)
-    new_data = QtCore.pyqtSignal(str)
+    new_data = QtCore.pyqtSignal(list)
 
-    def __init__(self):
-        Consumer.__init__(self)
+    def __init__(self, buffer_size=1, buffer_timeout=0):
+        Consumer.__init__(self, buffer_size, buffer_timeout)
         QtCore.QObject.__init__(self)
 
     def on_start(self, *args):
@@ -77,9 +77,9 @@ class DataWriter(Consumer, QtCore.QObject):
     def on_stopped(self, *args):
         pass
 
-    def consumer_work(self, item, *args):
-        if item[0] is not None:
-            self.new_data.emit(item[0]["data"])
+    def consumer_work(self, items, *args):
+        emit_items = [item for item in items if item is not None]
+        self.new_data.emit(emit_items)
 
 
 class EITProcessor(Consumer, QtCore.QObject):

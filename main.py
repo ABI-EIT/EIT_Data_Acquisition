@@ -47,19 +47,24 @@ spectra_data_format = {
     "prefix": "magnitudes:        ",
     "separator": ",       "
 }
+flow_plot_buffer = 3000
 
 
 class MainWindow(QMainWindow, Ui_MainWindow):
     def __init__(self):
         super(MainWindow, self).__init__()
         self.first_plot = True
+        self.first_flow_plot = True
         self.setupUi(self)
         self.canvas = None
         self.plot_axes = None
+        self.flow_canvas = None
+        self.flow_plot_axes = None
         self.populate_devices()
         self.reader = Reader(tag="EIT")
         self.flow_reader = Reader(tag="Flow")
-        self.data_writer = DataWriter()
+        self.data_writer = QueueEmitter()
+        self.flow_emitter = QueueEmitter(buffer_size=200, buffer_timeout=3)
         self.eit_processor = EITProcessor()
         self.data_saver = DataSaver()
         self.conf = default_conf
@@ -130,7 +135,17 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.plot_axes = self.canvas.figure.subplots()
         toolbar = NavigationToolbar(self.canvas, self.canvas, coordinates=True)
 
-        self.verticalLayout.addWidget(self.canvas)
+        self.verticalLayoutEIT.addWidget(self.canvas)
+        self.verticalLayoutEIT.addWidget(toolbar)
+
+    def add_flow_plot(self):
+        self.placeholderWidgetFlow.setVisible(False)
+
+        self.flow_canvas = FigureCanvas(matplotlib.figure.Figure())
+        self.flow_plot_axes = self.flow_canvas.figure.subplots()
+        toolbar = NavigationToolbar(self.flow_canvas, self.flow_canvas, coordinates=True)
+
+        self.verticalLayout.addWidget(self.flow_canvas)
         self.verticalLayout.addWidget(toolbar)
 
     def update_plot(self, triangulation, eit_image, electrode_points):
@@ -159,6 +174,27 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         self.plot_axes.figure.canvas.draw()
 
+    def update_flow_plot(self, items):
+        if self.first_flow_plot:
+            self.add_flow_plot()
+            self.first_flow_plot = False
+            data = []
+        else:
+            data = self.flow_plot_axes.lines[0].get_ydata()
+
+        # print(items)
+        new_data = [float(item["data"]) for item in items]
+        data = np.append(data, new_data)
+        data = data[-1*flow_plot_buffer:]
+
+        # print(data)
+        self.flow_plot_axes.clear()
+        self.flow_plot_axes.plot(data)
+        #
+        # # plot points. maybe blit?
+        #
+        self.flow_plot_axes.figure.canvas.draw()
+
     def populate_devices(self):
         self.comboBox.addItems(pyvisa.ResourceManager().list_resources())
         self.comboBox.setCurrentIndex(-1)
@@ -169,7 +205,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         if self.data_writer.get_state() != self.data_writer.started:
             self.reader.add_subscriber(self.data_writer.queue)
             self.data_writer.start_new()
-            self.data_writer.new_data.connect(lambda data: self.textEdit.append(data))
+            self.data_writer.new_data.connect(lambda item_list: [self.textEdit.append(item["data"]) for item in item_list])
 
         if self.eit_processor.get_state() != self.eit_processor.started:
             self.reader.add_subscriber(self.eit_processor.queue)
@@ -182,6 +218,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.reader.start_new(on_start_args=(text, spectra_configuration))
 
     def change_flow_device(self, text):
+        if self.flow_emitter.get_state() != self.flow_emitter.started:
+            self.flow_reader.add_subscriber(self.flow_emitter.queue)
+            self.flow_emitter.start_new()
+            self.flow_emitter.new_data.connect(lambda items: self.update_flow_plot(items))
+
         if self.flow_reader.get_state() != self.flow_reader.stopped:
             self.flow_reader.set_stopped()
 
