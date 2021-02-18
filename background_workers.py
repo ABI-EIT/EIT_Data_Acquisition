@@ -57,7 +57,7 @@ class Reader(Producer, QtCore.QObject):
         except UnicodeDecodeError as e:
             print(e)
             return None
-        return {"tag": self.tag, "data": data, "timestamp": time.time()}
+        return {"tag": self.tag, "data": data, "timestamp": time()}
 
     def on_state_changed(self, state):
         self.state_signal.emit(state)
@@ -184,6 +184,9 @@ class DataSaver(Consumer):
         return open(directory + file_name + addition + ext, "x", newline="")
 
     def on_start(self, suffix, data_saving_configuration):
+        self.buffer_size = data_saving_configuration["buffer_size"]
+        self.buffer_timeout = data_saving_configuration["buffer_timeout"]
+
         self.file_lock.acquire()
         self.file = self.create_unique_save_file(suffix, data_saving_configuration)
         self.csv_writer = csv.writer(self.file, delimiter=data_saving_configuration["delimiter"], quoting=csv.QUOTE_MINIMAL)

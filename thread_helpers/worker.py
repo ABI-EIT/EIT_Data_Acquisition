@@ -3,6 +3,7 @@ import time
 import queue
 from abc import ABCMeta, abstractmethod
 import atexit
+import numpy as np
 
 
 class Worker:
@@ -95,7 +96,6 @@ class Consumer(Worker):
         self.queue = queue.Queue()
         self.buffer_size = buffer_size
         self.buffer_timeout = buffer_timeout
-        self.buffer = []
         self.last_time_worked = None
 
     def stop_at_queue_end(self):
@@ -104,30 +104,32 @@ class Consumer(Worker):
     def work(self,  on_start_args=(), work_args=(), on_stopped_args=()):
         self.on_state_changed(self.get_state())
         self.on_start(*on_start_args)
-        while 1:  # Continuously check for both state change and new item in queue
+        while 1:  # Continuously check for both state change and new items in queue
             if self.get_state() == self.stopped:
                 break
-            if not self.queue.empty():
-                item = self.queue.get()
-                self.buffer.append(item["data"])
 
-                if item["command"] == "stop":
-                    # clear the buffer then stop
+            # WARNING! commands sent through the queue can take up to buffer_timeout time to be processed.
+            # Implementing stop this way ensures that we don't save any more data than we need
+            # If we made stop_at_queue end a state, it could take effect immediately
+            if self.queue.qsize() >= self.buffer_size or \
+               ((time.time() - self.last_time_worked) >= self.buffer_timeout and self.queue.qsize() >= 1):
+
+                items = [self.queue.get() for i in range(self.queue.qsize())]
+                items.reverse()
+
+                commands = [item["command"] for item in items]
+                if "stop" in commands:
+                    # take all items after the stop command was received
+                    items = items[np.argmax(command == "stop" for command in commands)+1:]
                     self.last_time_worked = time.time()
-                    self.consumer_work(self.buffer, *work_args)
-                    self.buffer = []
+                    self.consumer_work([item["data"] for item in items], *work_args)
                     self.set_stopped()
                     break
 
-                # if buffer timeout or buffer sizeout, do work on buffer
-                if (time.time() - self.last_time_worked) >= self.buffer_timeout or \
-                        len(self.buffer) >= self.buffer_size:
-                    # print("Saving: delta time = %f, buffer size = %d" % ((time.time() - self.last_time_worked), len(self.buffer)))
-                    self.last_time_worked = time.time()
-                    self.consumer_work(self.buffer, *work_args)
-                    self.buffer = []
+                self.last_time_worked = time.time()
+                self.consumer_work([item["data"] for item in items], *work_args)
 
-            time.sleep(0.00001)  # Yield to thread scheduler
+            time.sleep(0.00001)  # Yield to thread scheduler?
 
         self.on_state_changed(self.get_state())
         self.on_stopped(*on_stopped_args)

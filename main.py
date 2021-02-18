@@ -39,7 +39,9 @@ data_saving_configuration = {
     "columns": ["Time", "Tag", "Flow", "EIT"],
     "timestamp_format": "raw",
     "delimiter": ",",
-    "extension": ".csv"
+    "extension": ".csv",
+    "buffer_size": 1000,
+    "buffer_timeout": .5
 }
 spectra_data_format = {
     "prefix": "magnitudes:        ",
