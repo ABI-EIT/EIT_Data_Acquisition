@@ -54,6 +54,10 @@ class Worker:
         pass
 
 
+def put_in_queue(queue, data, command=None):
+    queue.put({"command": command, "data": data})
+
+
 class Producer(Worker):
     __metaclass__ = ABCMeta
 

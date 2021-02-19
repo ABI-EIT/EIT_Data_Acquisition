@@ -1,5 +1,5 @@
 from PyQt5 import QtCore
-from thread_helpers.worker import Producer, Consumer
+from thread_helpers.worker import Producer, Consumer, put_in_queue
 import matplotlib.tri as tri
 import pyvisa
 import threading

@@ -259,6 +259,9 @@
        </layout>
       </item>
       <item>
+       <layout class="QHBoxLayout" name="testButtonsLayout"/>
+      </item>
+      <item>
        <widget class="QLabel" name="label">
         <property name="text">
          <string>EIT Data</string>
