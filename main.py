@@ -47,7 +47,13 @@ spectra_data_format = {
     "prefix": "magnitudes:        ",
     "separator": ",       "
 }
-flow_plot_buffer = 3000
+flow_plot_config = {
+    "buffer": 3000,
+    "slope": 7.117,
+    "offset": -21,
+    "min_range": 17
+}
+
 test_names = ["Test 1", "Test 2", "Test 3", "Test 4"]
 
 
@@ -97,7 +103,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.eit_reader = Reader(tag="EIT")
         self.flow_reader = Reader(tag="Flow")
         self.eit_data_writer = QueueEmitter()
-        self.flow_emitter = QueueEmitter(buffer_size=200, buffer_timeout=3)
+        self.flow_emitter = QueueEmitter(buffer_size=10000, buffer_timeout=.5)
         self.eit_processor = EITProcessor()
         self.data_saver = DataSaver()
         self.conf = default_conf
@@ -120,6 +126,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.clear_background_button.setEnabled(False)
 
         self.populate_test_buttons()
+
+        self.start_time = time()
 
     def populate_test_buttons(self):
         self.test_buttons = [TestButton(name=name, queue=self.data_saver.queue, enabled=False) for name in test_names]
@@ -229,22 +237,39 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         if self.first_flow_plot:
             self.add_flow_plot()
             self.first_flow_plot = False
-            data = []
+            data = [float(item["data"]) for item in items]
+            data.reverse()
+            data = np.multiply(data, flow_plot_config["slope"])
+            data = np.add(data, flow_plot_config["offset"])
+            times = [float(item["timestamp"]) - float(self.start_time) for item in items]
+            times.reverse()
         else:
             data = self.flow_plot_axes.lines[0].get_ydata()
+            times = self.flow_plot_axes.lines[0].get_xdata()
 
-        # print(items)
-        new_data = [float(item["data"]) for item in items]
-        data = np.append(data, new_data)
-        data = data[-1 * flow_plot_buffer:]
-
-        # print(data)
         self.flow_plot_axes.clear()
-        self.flow_plot_axes.plot(data)
-        #
-        # # plot points. maybe blit?
-        #
+
+        new_data = [float(item["data"]) for item in items]
+        new_data.reverse()
+        new_data = np.multiply(new_data, flow_plot_config["slope"])
+        new_data = np.add(new_data, flow_plot_config["offset"])
+        data = np.append(data, new_data)
+        data = data[-1 * flow_plot_config["buffer"]:]
+
+        new_time = [float(item["timestamp"]) - float(self.start_time) for item in items]
+        new_time.reverse()
+        times = np.append(times, new_time)
+        times = times[-1 * flow_plot_config["buffer"]:]
+
+        self.flow_plot_axes.plot(times, data)
+        ylim = self.flow_plot_axes.get_ylim()
+        range = ylim[1] - ylim[0]
+        range_min = flow_plot_config["min_range"]
+        if range < range_min:
+            self.flow_plot_axes.set_ylim((ylim[0]-((range_min-range)/2)), ylim[1]+((range_min-range)/2))
+
         self.flow_plot_axes.figure.canvas.draw()
+
 
     def populate_devices(self):
         self.comboBox.addItems(pyvisa.ResourceManager().list_resources())
