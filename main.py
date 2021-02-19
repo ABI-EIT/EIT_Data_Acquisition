@@ -115,7 +115,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.eit_obj = self.initialize_eit_obj(default_pickle, self.conf)
 
         self.set_background_button.clicked.connect(self.set_background)
+        self.set_background_button.setEnabled(False)
         self.clear_background_button.clicked.connect(lambda: self.eit_processor.set_background(None))
+        self.clear_background_button.setEnabled(False)
 
         self.populate_test_buttons()
 
@@ -125,12 +127,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def set_background(self):
         current_frame = self.eit_processor.get_current_frame()
-        self.eit_processor.set_background(current_frame)
-        background_file = DataSaver.create_unique_save_file("background", data_saving_configuration)
-        background_file.write(spectra_data_format["prefix"] + "".join(
-            ("{}" + spectra_data_format["separator"]).format(item) for item in current_frame))
-        background_file.close()
-        Toaster.showMessage(self, "Background frame saved in: " + background_file.name)
+        if current_frame is not None:
+            self.eit_processor.set_background(current_frame)
+            background_file = DataSaver.create_unique_save_file("background", data_saving_configuration)
+            background_file.write(spectra_data_format["prefix"] + "".join(
+                ("{}" + spectra_data_format["separator"]).format(item) for item in current_frame))
+            background_file.close()
+            Toaster.showMessage(self, "Background frame saved in: " + background_file.name)
 
     def start_recording(self, suffix):
         self.stopRecordingButton.setVisible(True)
@@ -263,6 +266,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         if self.eit_reader.get_state() != self.eit_reader.stopped:
             self.eit_reader.set_stopped()
+
+        self.set_background_button.setEnabled(True)
+        self.clear_background_button.setEnabled(True)
 
         self.eit_reader.start_new(on_start_args=(text, spectra_configuration))
 
