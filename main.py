@@ -74,10 +74,12 @@ class TestButton(QtWidgets.QPushButton):
                 self.start()
         else:
             put_in_queue(self.queue, {"tag": "Tag", "data": "Stop " + self.name, "timestamp": time()})
+            Toaster.showMessage(self, "%s stop time recorded" % self.name)
             self.setText("Start " + self.name)
 
     def start(self):
         put_in_queue(self.queue, {"tag": "Tag", "data": "Start " + self.name, "timestamp": time()})
+        Toaster.showMessage(self, "%s start time recorded" % self.name)
         self.setText("Stop " + self.name)
 
 
