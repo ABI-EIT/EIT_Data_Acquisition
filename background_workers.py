@@ -1,5 +1,5 @@
 from PyQt5 import QtCore
-from thread_helpers.worker import Producer, Consumer
+from thread_helpers.worker import Producer, Consumer, put_in_queue
 import matplotlib.tri as tri
 import pyvisa
 import threading
@@ -57,18 +57,18 @@ class Reader(Producer, QtCore.QObject):
         except UnicodeDecodeError as e:
             print(e)
             return None
-        return {"tag": self.tag, "data": data, "timestamp": time.time()}
+        return {"tag": self.tag, "data": data, "timestamp": time()}
 
     def on_state_changed(self, state):
         self.state_signal.emit(state)
 
 
-class DataWriter(Consumer, QtCore.QObject):
+class QueueEmitter(Consumer, QtCore.QObject):
     state_signal = QtCore.pyqtSignal(str)
-    new_data = QtCore.pyqtSignal(str)
+    new_data = QtCore.pyqtSignal(list)
 
-    def __init__(self):
-        Consumer.__init__(self)
+    def __init__(self, buffer_size=1, buffer_timeout=0):
+        Consumer.__init__(self, buffer_size, buffer_timeout)
         QtCore.QObject.__init__(self)
 
     def on_start(self, *args):
@@ -77,9 +77,9 @@ class DataWriter(Consumer, QtCore.QObject):
     def on_stopped(self, *args):
         pass
 
-    def consumer_work(self, item, *args):
-        if item[0] is not None:
-            self.new_data.emit(item[0]["data"])
+    def consumer_work(self, items, *args):
+        emit_items = [item for item in items if item is not None]
+        self.new_data.emit(emit_items)
 
 
 class EITProcessor(Consumer, QtCore.QObject):
@@ -184,6 +184,9 @@ class DataSaver(Consumer):
         return open(directory + file_name + addition + ext, "x", newline="")
 
     def on_start(self, suffix, data_saving_configuration):
+        self.buffer_size = data_saving_configuration["buffer_size"]
+        self.buffer_timeout = data_saving_configuration["buffer_timeout"]
+
         self.file_lock.acquire()
         self.file = self.create_unique_save_file(suffix, data_saving_configuration)
         self.csv_writer = csv.writer(self.file, delimiter=data_saving_configuration["delimiter"], quoting=csv.QUOTE_MINIMAL)

@@ -39,33 +39,81 @@ data_saving_configuration = {
     "columns": ["Time", "Tag", "Flow", "EIT"],
     "timestamp_format": "raw",
     "delimiter": ",",
-    "extension": ".csv"
+    "extension": ".csv",
+    "buffer_size": 1000,
+    "buffer_timeout": .5
 }
 spectra_data_format = {
     "prefix": "magnitudes:        ",
     "separator": ",       "
 }
+flow_plot_config = {
+    "buffer": 3000,
+    "slope": 7.117,
+    "offset": -21,
+    "min_range": 17
+}
+
+test_names = ["Test 1", "Test 2", "Test 3", "Test 4"]
+
+
+class TestButton(QtWidgets.QPushButton):
+    def __init__(self, *args, **kwargs):
+        self.name = kwargs.pop("name")
+        self.queue = kwargs.pop("queue")
+        super().__init__(*args, **kwargs)
+        self.setText("Start " + self.name)
+        self.setCheckable(True)
+        self.clicked.connect(self.react_to_click)
+        self.started_before = False
+
+    def react_to_click(self):
+        if self.isChecked():
+            if self.started_before:
+                message_box = QtWidgets.QMessageBox(text=("Are you sure you want to start {0} again?".format(self.name)))
+                message_box.setWindowTitle("Warning")
+                message_box.setStandardButtons(QtWidgets.QMessageBox.Ok | QtWidgets.QMessageBox.Cancel)
+                message_box.buttonClicked.connect(lambda button: (self.start() if button.text() == "OK" else self.setChecked(False)))
+                message_box.exec()
+            else:
+                self.started_before = True
+                self.start()
+        else:
+            put_in_queue(self.queue, {"tag": "Tag", "data": "Stop " + self.name, "timestamp": time()})
+            Toaster.showMessage(self, "%s stop time recorded" % self.name)
+            self.setText("Start " + self.name)
+
+    def start(self):
+        put_in_queue(self.queue, {"tag": "Tag", "data": "Start " + self.name, "timestamp": time()})
+        Toaster.showMessage(self, "%s start time recorded" % self.name)
+        self.setText("Stop " + self.name)
 
 
 class MainWindow(QMainWindow, Ui_MainWindow):
     def __init__(self):
         super(MainWindow, self).__init__()
         self.first_plot = True
+        self.first_flow_plot = True
         self.setupUi(self)
         self.canvas = None
         self.plot_axes = None
+        self.flow_canvas = None
+        self.flow_plot_axes = None
         self.populate_devices()
-        self.reader = Reader(tag="EIT")
+        self.eit_reader = Reader(tag="EIT")
         self.flow_reader = Reader(tag="Flow")
-        self.data_writer = DataWriter()
+        self.eit_data_writer = QueueEmitter()
+        self.flow_emitter = QueueEmitter(buffer_size=10000, buffer_timeout=.5)
         self.eit_processor = EITProcessor()
         self.data_saver = DataSaver()
         self.conf = default_conf
         self.initial_background = None
         self.color_axis = None
+        self.test_buttons = []
 
-        self.comboBox.currentTextChanged.connect(self.change_device)
-        self.startRecordingButton.clicked.connect(lambda: self.start_recording(self.dataFileSuffixTextEdit.toPlainText()))
+        self.comboBox.currentTextChanged.connect(self.change_eit_device)
+        self.startRecordingButton.clicked.connect(
+            lambda: self.start_recording(self.dataFileSuffixTextEdit.toPlainText()))
         self.stopRecordingButton.clicked.connect(self.stop_recording)
 
         self.comboBoxFlow.currentTextChanged.connect(self.change_flow_device)
@@ -73,15 +121,27 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.eit_obj = self.initialize_eit_obj(default_pickle, self.conf)
 
         self.set_background_button.clicked.connect(self.set_background)
+        self.set_background_button.setEnabled(False)
         self.clear_background_button.clicked.connect(lambda: self.eit_processor.set_background(None))
+        self.clear_background_button.setEnabled(False)
+
+        self.populate_test_buttons()
+
+        self.start_time = time()
+
+    def populate_test_buttons(self):
+        self.test_buttons = [TestButton(name=name, queue=self.data_saver.queue, enabled=False) for name in test_names]
+        [self.testButtonsLayout.addWidget(button) for button in self.test_buttons]
 
     def set_background(self):
         current_frame = self.eit_processor.get_current_frame()
-        self.eit_processor.set_background(current_frame)
-        background_file = DataSaver.create_unique_save_file("background", data_saving_configuration)
-        background_file.write(spectra_data_format["prefix"] + "".join(("{}"+spectra_data_format["separator"]).format(item) for item in current_frame))
-        background_file.close()
-        Toaster.showMessage(self, "Background frame saved in: " + background_file.name)
+        if current_frame is not None:
+            self.eit_processor.set_background(current_frame)
+            background_file = DataSaver.create_unique_save_file("background", data_saving_configuration)
+            background_file.write(spectra_data_format["prefix"] + "".join(
+                ("{}" + spectra_data_format["separator"]).format(item) for item in current_frame))
+            background_file.close()
+            Toaster.showMessage(self, "Background frame saved in: " + background_file.name)
 
     def start_recording(self, suffix):
         self.stopRecordingButton.setVisible(True)
@@ -90,7 +150,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.data_saver.start_new(on_start_args=(suffix, data_saving_configuration))
 
         self.flow_reader.add_subscriber(self.data_saver.queue)
-        self.reader.add_subscriber(self.data_saver.queue)
+        self.eit_reader.add_subscriber(self.data_saver.queue)
+
+        self.comboBox.setEnabled(False)
+        self.comboBoxFlow.setEnabled(False)
+        self.dataFileSuffixTextEdit.setEnabled(False)
+        [button.setEnabled(True) for button in self.test_buttons]
 
         message = "Started recording in: " + self.data_saver.get_filename()
 
@@ -100,13 +165,14 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.stopRecordingButton.setVisible(False)
         self.startRecordingButton.setVisible(True)
 
-        # we want the saver to stop if it is no longer subscribing to anything
-        # this is only necessary if the datastreams can be stopped separately though
-        # if so we need to make the producers send a message to consumers when they add or remove a subscription
-        # then the consumer will know if it has been unsubscribed from everything
-        # self.data_saver.set_stopped()
+        self.comboBox.setEnabled(True)
+        self.comboBoxFlow.setEnabled(True)
+        self.dataFileSuffixTextEdit.setEnabled(True)
+        [button.setEnabled(False) for button in self.test_buttons]
+        [button.setChecked(False) for button in self.test_buttons]
+
         self.data_saver.stop_at_queue_end()
-        self.reader.remove_subscriber(self.data_saver.queue)
+        self.eit_reader.remove_subscriber(self.data_saver.queue)
         self.flow_reader.remove_subscriber(self.data_saver.queue)
         Toaster.showMessage(self, "Stopped recording")
 
@@ -121,19 +187,29 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         return eit_obj
 
-    def add_plot(self):
+    def add_eit_plot(self):
         self.placeholderWidget.setVisible(False)
 
         self.canvas = FigureCanvas(matplotlib.figure.Figure())
         self.plot_axes = self.canvas.figure.subplots()
         toolbar = NavigationToolbar(self.canvas, self.canvas, coordinates=True)
 
-        self.verticalLayout.addWidget(self.canvas)
+        self.verticalLayoutEIT.addWidget(self.canvas)
+        self.verticalLayoutEIT.addWidget(toolbar)
+
+    def add_flow_plot(self):
+        self.placeholderWidgetFlow.setVisible(False)
+
+        self.flow_canvas = FigureCanvas(matplotlib.figure.Figure())
+        self.flow_plot_axes = self.flow_canvas.figure.subplots()
+        toolbar = NavigationToolbar(self.flow_canvas, self.flow_canvas, coordinates=True)
+
+        self.verticalLayout.addWidget(self.flow_canvas)
         self.verticalLayout.addWidget(toolbar)
 
-    def update_plot(self, triangulation, eit_image, electrode_points):
+    def update_eit_plot(self, triangulation, eit_image, electrode_points):
         if self.first_plot:
-            self.add_plot()
+            self.add_eit_plot()
             # self.first_plot is set to False below
 
         self.plot_axes.clear()
@@ -157,29 +233,76 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         self.plot_axes.figure.canvas.draw()
 
+    def update_flow_plot(self, items):
+        if self.first_flow_plot:
+            self.add_flow_plot()
+            self.first_flow_plot = False
+            data = [float(item["data"]) for item in items]
+            data.reverse()
+            data = np.multiply(data, flow_plot_config["slope"])
+            data = np.add(data, flow_plot_config["offset"])
+            times = [float(item["timestamp"]) - float(self.start_time) for item in items]
+            times.reverse()
+        else:
+            data = self.flow_plot_axes.lines[0].get_ydata()
+            times = self.flow_plot_axes.lines[0].get_xdata()
+
+        self.flow_plot_axes.clear()
+
+        new_data = [float(item["data"]) for item in items]
+        new_data.reverse()
+        new_data = np.multiply(new_data, flow_plot_config["slope"])
+        new_data = np.add(new_data, flow_plot_config["offset"])
+        data = np.append(data, new_data)
+        data = data[-1 * flow_plot_config["buffer"]:]
+
+        new_time = [float(item["timestamp"]) - float(self.start_time) for item in items]
+        new_time.reverse()
+        times = np.append(times, new_time)
+        times = times[-1 * flow_plot_config["buffer"]:]
+
+        self.flow_plot_axes.plot(times, data)
+        ylim = self.flow_plot_axes.get_ylim()
+        range = ylim[1] - ylim[0]
+        range_min = flow_plot_config["min_range"]
+        if range < range_min:
+            self.flow_plot_axes.set_ylim((ylim[0]-((range_min-range)/2)), ylim[1]+((range_min-range)/2))
+
+        self.flow_plot_axes.figure.canvas.draw()
+
+
     def populate_devices(self):
         self.comboBox.addItems(pyvisa.ResourceManager().list_resources())
         self.comboBox.setCurrentIndex(-1)
         self.comboBoxFlow.addItems(pyvisa.ResourceManager().list_resources())
         self.comboBoxFlow.setCurrentIndex(-1)
 
-    def change_device(self, text):
-        if self.data_writer.get_state() != self.data_writer.started:
-            self.reader.add_subscriber(self.data_writer.queue)
-            self.data_writer.start_new()
-            self.data_writer.new_data.connect(lambda data: self.textEdit.append(data))
+    def change_eit_device(self, text):
+        if self.eit_data_writer.get_state() != self.eit_data_writer.started:
+            self.eit_reader.add_subscriber(self.eit_data_writer.queue)
+            self.eit_data_writer.start_new()
+            self.eit_data_writer.new_data.connect(
+                lambda item_list: [self.textEdit.append(item["data"]) for item in item_list])
 
         if self.eit_processor.get_state() != self.eit_processor.started:
-            self.reader.add_subscriber(self.eit_processor.queue)
+            self.eit_reader.add_subscriber(self.eit_processor.queue)
             self.eit_processor.start_new(on_start_args=(self.eit_obj, self.conf, self.initial_background))
-            self.eit_processor.new_data.connect(lambda data: self.update_plot(data[0], data[1], data[2]))
+            self.eit_processor.new_data.connect(lambda data: self.update_eit_plot(data[0], data[1], data[2]))
 
-        if self.reader.get_state() != self.reader.stopped:
-            self.reader.set_stopped()
+        if self.eit_reader.get_state() != self.eit_reader.stopped:
+            self.eit_reader.set_stopped()
 
-        self.reader.start_new(on_start_args=(text, spectra_configuration))
+        self.set_background_button.setEnabled(True)
+        self.clear_background_button.setEnabled(True)
+
+        self.eit_reader.start_new(on_start_args=(text, spectra_configuration))
 
     def change_flow_device(self, text):
+        if self.flow_emitter.get_state() != self.flow_emitter.started:
+            self.flow_reader.add_subscriber(self.flow_emitter.queue)
+            self.flow_emitter.start_new()
+            self.flow_emitter.new_data.connect(lambda items: self.update_flow_plot(items))
+
         if self.flow_reader.get_state() != self.flow_reader.stopped:
             self.flow_reader.set_stopped()
 
@@ -195,8 +318,3 @@ if __name__ == '__main__':
 
     main_window.show()
     app.exec()
-
-
-
-
-
