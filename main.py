@@ -26,7 +26,7 @@ spectra_configuration = {
     "encoding": "latin-1"
 }
 flow_configuration = {
-    "baud": 19200,
+    "baud": 115200,
     "frame_start_char": None,
     "read_timeout": 10000,
     "read_termination_char": "\n",
@@ -48,7 +48,7 @@ spectra_data_format = {
     "separator": ",       "
 }
 flow_plot_config = {
-    "buffer": 3000,
+    "buffer": 18000,
     "slope": 7.117,
     "offset": -21,
     "min_range": 17
@@ -131,7 +131,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def populate_test_buttons(self):
         self.test_buttons = [TestButton(name=name, queue=self.data_saver.queue, enabled=False) for name in test_names]
-        [self.testButtonsLayout.addWidget(button) for button in self.test_buttons]
+        for button in self.test_buttons:
+            self.testButtonsLayout.addWidget(button)
 
     def set_background(self):
         current_frame = self.eit_processor.get_current_frame()
