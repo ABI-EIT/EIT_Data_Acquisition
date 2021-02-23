@@ -47,11 +47,18 @@ spectra_data_format = {
     "prefix": "magnitudes:        ",
     "separator": ",       "
 }
+# flow_plot_config = {
+#     "buffer": 18000,
+#     "slope": 7.117,
+#     "offset": -21,
+#     "min_range": 17
+# }
+
 flow_plot_config = {
     "buffer": 18000,
-    "slope": 7.117,
-    "offset": -21,
-    "min_range": 17
+    "slope": 1,
+    "offset": 0,
+    "min_range": 2
 }
 
 test_names = ["Test 1", "Test 2", "Test 3", "Test 4"]
@@ -234,32 +241,39 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         self.plot_axes.figure.canvas.draw()
 
+    def parse_flow_data(self, items):
+        data_list = []
+        time_list = []
+        for item in items:
+            try:
+                data = float(item["data"])
+                time = float(item["timestamp"]) - float(self.start_time)
+            except ValueError:
+                continue
+            data_list.append(data)
+            time_list.append(time)
+
+        data_list = np.multiply(data_list, flow_plot_config["slope"])
+        data_list = np.add(data_list, flow_plot_config["offset"])
+        return data_list, time_list
+
     def update_flow_plot(self, items):
+        new_data, new_times = self.parse_flow_data(items)
         if self.first_flow_plot:
             self.add_flow_plot()
             self.first_flow_plot = False
-            data = [float(item["data"]) for item in items]
-            data.reverse()
-            data = np.multiply(data, flow_plot_config["slope"])
-            data = np.add(data, flow_plot_config["offset"])
-            times = [float(item["timestamp"]) - float(self.start_time) for item in items]
-            times.reverse()
+            data = []
+            times = []
         else:
             data = self.flow_plot_axes.lines[0].get_ydata()
             times = self.flow_plot_axes.lines[0].get_xdata()
 
         self.flow_plot_axes.clear()
 
-        new_data = [float(item["data"]) for item in items]
-        new_data.reverse()
-        new_data = np.multiply(new_data, flow_plot_config["slope"])
-        new_data = np.add(new_data, flow_plot_config["offset"])
         data = np.append(data, new_data)
         data = data[-1 * flow_plot_config["buffer"]:]
 
-        new_time = [float(item["timestamp"]) - float(self.start_time) for item in items]
-        new_time.reverse()
-        times = np.append(times, new_time)
+        times = np.append(times, new_times)
         times = times[-1 * flow_plot_config["buffer"]:]
 
         self.flow_plot_axes.plot(times, data)
@@ -270,7 +284,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.flow_plot_axes.set_ylim((ylim[0]-((range_min-range)/2)), ylim[1]+((range_min-range)/2))
 
         self.flow_plot_axes.figure.canvas.draw()
-
 
     def populate_devices(self):
         self.comboBox.addItems(pyvisa.ResourceManager().list_resources())

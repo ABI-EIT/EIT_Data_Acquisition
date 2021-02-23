@@ -119,12 +119,11 @@ class Consumer(Worker):
                ((time.time() - self.last_time_worked) >= self.buffer_timeout and self.queue.qsize() >= 1):
 
                 items = [self.queue.get() for i in range(self.queue.qsize())]
-                items.reverse()
 
                 commands = [item["command"] for item in items]
                 if "stop" in commands:
                     # take all items after the stop command was received
-                    items = items[np.argmax(command == "stop" for command in commands)+1:]
+                    items = items[:np.argmax(np.array(command == "stop" for command in commands))]
                     self.last_time_worked = time.time()
                     self.consumer_work([item["data"] for item in items], *work_args)
                     self.set_stopped()
