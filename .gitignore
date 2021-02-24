@@ -7,5 +7,5 @@ dist/
 pyeit.egg-info/
 
 venv/
-data/
+/data
 

@@ -25,7 +25,7 @@ flow_configuration = {
 }
 data_saving_configuration = {
     "directory": "data/",
-    "format": "%Y-%m-%dT%H_%M_eit",
+    "format": "%Y-%m-%dT%H_%M",
     "default_suffix": "data",
     "columns": ["Time", "Flow1", "Flow2"],
     "timestamp_format": "raw",
