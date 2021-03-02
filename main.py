@@ -11,7 +11,7 @@ import matplotlib.pyplot
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from abi_pyeit.app.eit import *
 import time
-from background_workers import *
+from background_process_workers import *
 from Toaster import Toaster
 
 Ui_MainWindow, QMainWindow = uic.loadUiType("layout/layout_with_flow.ui")
@@ -109,8 +109,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.populate_devices()
         self.eit_reader = Reader(tag="EIT")
         self.flow_reader = Reader(tag="Flow")
-        self.eit_data_writer = QueueEmitter()
-        self.flow_emitter = QueueEmitter(buffer_size=10000, buffer_timeout=.5)
         self.eit_processor = EITProcessor()
         self.data_saver = DataSaver()
         self.conf = default_conf
@@ -126,18 +124,24 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.comboBoxFlow.currentTextChanged.connect(self.change_flow_device)
 
         self.eit_obj = self.initialize_eit_obj(default_pickle, self.conf)
+        self.eit_reader.new_data.connect(
+            lambda item_list: [self.textEdit.append(item["data"]) for item in item_list])
+        self.eit_reader.set_subscribers([self.eit_processor.get_work_queue(), self.data_saver.get_work_queue()])
 
         self.set_background_button.clicked.connect(self.set_background)
         self.set_background_button.setEnabled(False)
         self.clear_background_button.clicked.connect(lambda: self.eit_processor.set_background(None))
         self.clear_background_button.setEnabled(False)
 
+        self.flow_reader.new_data.connect(lambda items: self.update_flow_plot(items))
+        self.flow_reader.set_subscribers([self.data_saver.get_work_queue()])
+
         self.populate_test_buttons()
 
         self.start_time = time()
 
     def populate_test_buttons(self):
-        self.test_buttons = [TestButton(name=name, queue=self.data_saver.queue, enabled=False) for name in test_names]
+        self.test_buttons = [TestButton(name=name, queue=self.data_saver.get_work_queue(), enabled=False) for name in test_names]
         for button in self.test_buttons:
             self.testButtonsLayout.addWidget(button)
 
@@ -157,16 +161,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         self.data_saver.start_new(on_start_args=(suffix, data_saving_configuration))
 
-        self.flow_reader.add_subscriber(self.data_saver.queue)
-        self.eit_reader.add_subscriber(self.data_saver.queue)
-
         self.comboBox.setEnabled(False)
         self.comboBoxFlow.setEnabled(False)
         self.dataFileSuffixTextEdit.setEnabled(False)
-        [button.setEnabled(True) for button in self.test_buttons]
+        for button in self.test_buttons:
+            button.setEnabled(True)
 
         message = "Started recording in: " + self.data_saver.get_filename()
-
         Toaster.showMessage(self, message)
 
     def stop_recording(self):
@@ -176,12 +177,14 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.comboBox.setEnabled(True)
         self.comboBoxFlow.setEnabled(True)
         self.dataFileSuffixTextEdit.setEnabled(True)
-        [button.setEnabled(False) for button in self.test_buttons]
-        [button.setChecked(False) for button in self.test_buttons]
+
+        for button in self.test_buttons:
+            button.setEnabled(False)
+            button.setChecked(False)
 
         self.data_saver.stop_at_queue_end()
-        self.eit_reader.remove_subscriber(self.data_saver.queue)
-        self.flow_reader.remove_subscriber(self.data_saver.queue)
+        self.data_saver.close_queue()
+
         Toaster.showMessage(self, "Stopped recording")
 
     # This should be in EITProcessor
@@ -292,19 +295,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.comboBoxFlow.setCurrentIndex(-1)
 
     def change_eit_device(self, text):
-        if self.eit_data_writer.get_state() != self.eit_data_writer.started:
-            self.eit_reader.add_subscriber(self.eit_data_writer.queue)
-            self.eit_data_writer.start_new()
-            self.eit_data_writer.new_data.connect(
-                lambda item_list: [self.textEdit.append(item["data"]) for item in item_list])
-
         if self.eit_processor.get_state() != self.eit_processor.started:
-            self.eit_reader.add_subscriber(self.eit_processor.queue)
             self.eit_processor.start_new(on_start_args=(self.eit_obj, self.conf, self.initial_background))
             self.eit_processor.new_data.connect(lambda data: self.update_eit_plot(data[0], data[1], data[2]))
-
-        if self.eit_reader.get_state() != self.eit_reader.stopped:
-            self.eit_reader.set_stopped()
 
         self.set_background_button.setEnabled(True)
         self.clear_background_button.setEnabled(True)
@@ -312,14 +305,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.eit_reader.start_new(on_start_args=(text, spectra_configuration))
 
     def change_flow_device(self, text):
-        if self.flow_emitter.get_state() != self.flow_emitter.started:
-            self.flow_reader.add_subscriber(self.flow_emitter.queue)
-            self.flow_emitter.start_new()
-            self.flow_emitter.new_data.connect(lambda items: self.update_flow_plot(items))
-
-        if self.flow_reader.get_state() != self.flow_reader.stopped:
-            self.flow_reader.set_stopped()
-
         self.flow_reader.start_new(on_start_args=(text, flow_configuration))
 
 
