@@ -16,7 +16,7 @@ class Worker:
         self.process = None
         self.result_thread = None
         self.work_queues = []
-        self.state = Value('i', 0)
+        self.state = Value('i', 1)
         self.result_pipe_parent, self.result_pipe_child = Pipe()
         atexit.register(self.set_stopped)
         self.work_timeout = 0
@@ -25,11 +25,15 @@ class Worker:
         self.on_stopped_args = ()
         self.work_args = ()
 
+    def get_state(self):
+        return self.state.value
+
     def start_new(self, on_start_args=(), work_args=(), on_stopped_args=()):
         if self.process is not None:
             self.set_stopped()
             while self.process.is_alive():
                 time.sleep(0)
+        self.state.value = Worker.started
         self.process = Process(target=self.work_loop,
                                args=(self.work, self.on_start, self.on_stop, self.state, self.work_queues,
                                      (*self.on_start_args, *on_start_args), (*self.work_args, *work_args),
@@ -145,8 +149,6 @@ class Consumer(Worker):
 
         last_worked = time.time()
         while state.value != Worker.stopped:
-            if state.value == Worker.stop_at_queue_end:
-                pass
             if work_queue.qsize() >= buffer_size or \
                (time.time() - last_worked) >= work_timeout or \
                state.value == Worker.stop_at_queue_end:

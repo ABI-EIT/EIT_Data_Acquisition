@@ -25,12 +25,16 @@ class Reader(Producer, QtCore.QObject):
         tag = kwargs.pop("tag")
         Producer.__init__(self, *args, **kwargs)
         QtCore.QObject.__init__(self)
-        self.on_start_args = (tag,)
+        self.work_args = (tag,)
 
     @staticmethod
-    def on_start(device_name, configuration):
-        configuration = configuration
+    def on_start(*args):
+        device_name = args[0]
+        configuration = args[1]
+        # Todo: try:
         device = pyvisa.ResourceManager().open_resource(device_name)
+        # except pyvisa.VisaIOError as e:
+
         device.timeout = configuration["read_timeout"]
         device.baud_rate = configuration["baud"]
         device.encoding = configuration["encoding"]
@@ -40,7 +44,7 @@ class Reader(Producer, QtCore.QObject):
         return {"configuration": configuration, "device": device}
 
     @staticmethod
-    def on_stopped(on_start_results):
+    def on_stopped(on_start_results, *args):
         device = on_start_results["device"]
         if device is not None:
             pyvisa.ResourceManager()  # Need to instantiate this here or resource will become invalid before we can close it. Not sure why
@@ -69,8 +73,9 @@ class Reader(Producer, QtCore.QObject):
         return {"tag": tag, "data": data, "timestamp": time()}
 
     def on_result_ready(self, result):
-        emit_items = [item for item in result if item is not None]
-        self.new_data.emit(emit_items)
+        if result is not None:
+            emit_items = [item for item in result if item is not None]
+            self.new_data.emit(emit_items)
 
 
 class EITProcessor(Consumer, QtCore.QObject):
@@ -86,8 +91,11 @@ class EITProcessor(Consumer, QtCore.QObject):
         self.on_start_args = (self.bg_dict,)
 
     @staticmethod
-    def on_start(*args, eit_obj, conf, initial_background):
+    def on_start(*args):
         bg_dict = args[0]
+        eit_obj = args[1]
+        conf = args[2]
+        initial_background = args[3]
         eit_obj = eit_obj
         conf = load_conf(conf)
         if initial_background is not None:
