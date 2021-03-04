@@ -289,9 +289,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.flow_plot_axes.figure.canvas.draw()
 
     def populate_devices(self):
-        self.comboBox.addItems(pyvisa.ResourceManager().list_resources())
+        self.comboBox.addItems(Reader.list_devices())
         self.comboBox.setCurrentIndex(-1)
-        self.comboBoxFlow.addItems(pyvisa.ResourceManager().list_resources())
+        self.comboBoxFlow.addItems(Reader.list_devices())
         self.comboBoxFlow.setCurrentIndex(-1)
 
     def change_eit_device(self, text):
