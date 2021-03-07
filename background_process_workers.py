@@ -14,78 +14,7 @@ import serial
 from serial.tools import list_ports
 
 
-# class Reader(Producer, QtCore.QObject):
-#     """
-#         Reader sends messages of type:
-#             { "tag": string
-#               "data":  any
-#               "timestamp": time}
-#     """
-#     new_data = QtCore.pyqtSignal(list)
-#
-#     def __init__(self, *args, **kwargs):
-#         tag = kwargs.pop("tag")
-#         Producer.__init__(self, *args, **kwargs)
-#         QtCore.QObject.__init__(self)
-#         self.work_args = (tag,)
-#
-#     @staticmethod
-#     def on_start(*args):
-#         device_name = args[0]
-#         configuration = args[1]
-#         # Todo: try:
-#         device = pyvisa.ResourceManager().open_resource(device_name)
-#         # except pyvisa.VisaIOError as e:
-#
-#         device.timeout = configuration["read_timeout"]
-#         device.baud_rate = configuration["baud"]
-#         device.encoding = configuration["encoding"]
-#         device.flush(pyvisa.resources.resource.constants.VI_IO_IN_BUF)
-#         device.read_termination = configuration["read_termination_char"]
-#
-#         return {"configuration": configuration, "device": device}
-#
-#     @staticmethod
-#     def on_stopped(on_start_results, *args):
-#         device = on_start_results["device"]
-#         if device is not None:
-#             pyvisa.ResourceManager()  # Need to instantiate this here or resource will become invalid before we can close it. Not sure why
-#             try:
-#                 device.close()
-#             except pyvisa.errors.VisaIOError as e:
-#                 print(e)
-#                 pass
-#         pass
-#
-#     @staticmethod
-#     def work(on_start_results, *args):
-#         tag = args[0]
-#         device = on_start_results["device"]
-#         configuration = on_start_results["configuration"]
-#         try:
-#             data = device.read()
-#             if configuration["frame_start_char"] is not None and data[0] != configuration["frame_start_char"]:
-#                 return None
-#         except pyvisa.errors.VisaIOError as e:
-#             print(e)
-#             return None
-#         except UnicodeDecodeError as e:
-#             print(e)
-#             return None
-#         return {"tag": tag, "data": data, "timestamp": time()}
-#
-#     def on_result_ready(self, result):
-#         if result is not None:
-#             emit_items = [item for item in result if item is not None]
-#             self.new_data.emit(emit_items)
-#
-#     @staticmethod
-#     def list_devices():
-#         return pyvisa.ResourceManager().list_resources()
-
 class Reader(Producer, QtCore.QObject):
-# class PySerialReader(Producer, QtCore.QObject):
-    # TODO convert this to pyserial
     """
         Reader sends messages of type:
             { "tag": string
@@ -104,18 +33,26 @@ class Reader(Producer, QtCore.QObject):
     def on_start(*args):
         device_name = args[0]
         configuration = args[1]
+        # Todo: try:
+        device = pyvisa.ResourceManager().open_resource(device_name)
+        # except pyvisa.VisaIOError as e:
 
-        device = serial.Serial(port=device_name, baudrate=configuration["baud"], timeout=configuration["read_timeout"])
-        device.flushInput()
+        device.timeout = configuration["read_timeout"]
+        device.baud_rate = configuration["baud"]
+        device.encoding = configuration["encoding"]
+        device.flush(pyvisa.resources.resource.constants.VI_IO_IN_BUF)
+        device.read_termination = configuration["read_termination_char"]
+
         return {"configuration": configuration, "device": device}
 
     @staticmethod
     def on_stopped(on_start_results, *args):
         device = on_start_results["device"]
         if device is not None:
+            pyvisa.ResourceManager()  # Need to instantiate this here or resource will become invalid before we can close it. Not sure why
             try:
                 device.close()
-            except serial.SerialException as e:
+            except pyvisa.errors.VisaIOError as e:
                 print(e)
                 pass
         pass
@@ -125,14 +62,14 @@ class Reader(Producer, QtCore.QObject):
         tag = args[0]
         device = on_start_results["device"]
         configuration = on_start_results["configuration"]
-
         try:
-            print("reading data")
-            # data = device.read_until(configuration["read_termination_char"])
-            data = device.readline()
+            data = device.read()
             if configuration["frame_start_char"] is not None and data[0] != configuration["frame_start_char"]:
                 return None
-        except serial.SerialException as e:
+        except pyvisa.errors.VisaIOError as e:
+            print(e)
+            return None
+        except UnicodeDecodeError as e:
             print(e)
             return None
         return {"tag": tag, "data": data, "timestamp": time()}
@@ -144,8 +81,71 @@ class Reader(Producer, QtCore.QObject):
 
     @staticmethod
     def list_devices():
-        device_names = [port.name for port in list_ports.comports()]
-        return device_names
+        return pyvisa.ResourceManager().list_resources()
+
+# class Reader(Producer, QtCore.QObject):
+# # class PySerialReader(Producer, QtCore.QObject):
+#     # TODO convert this to pyserial
+#     """
+#         Reader sends messages of type:
+#             { "tag": string
+#               "data":  any
+#               "timestamp": time}
+#     """
+#     new_data = QtCore.pyqtSignal(list)
+#
+#     def __init__(self, *args, **kwargs):
+#         tag = kwargs.pop("tag")
+#         Producer.__init__(self, *args, **kwargs)
+#         QtCore.QObject.__init__(self)
+#         self.work_args = (tag,)
+#
+#     @staticmethod
+#     def on_start(*args):
+#         device_name = args[0]
+#         configuration = args[1]
+#
+#         device = serial.Serial(port=device_name, baudrate=configuration["baud"], timeout=configuration["read_timeout"])
+#         device.flushInput()
+#         return {"configuration": configuration, "device": device}
+#
+#     @staticmethod
+#     def on_stopped(on_start_results, *args):
+#         device = on_start_results["device"]
+#         if device is not None:
+#             try:
+#                 device.close()
+#             except serial.SerialException as e:
+#                 print(e)
+#                 pass
+#         pass
+#
+#     @staticmethod
+#     def work(on_start_results, *args):
+#         tag = args[0]
+#         device = on_start_results["device"]
+#         configuration = on_start_results["configuration"]
+#
+#         try:
+#             print("reading data")
+#             # data = device.read_until(configuration["read_termination_char"])
+#             data = device.readline()
+#             if configuration["frame_start_char"] is not None and data[0] != configuration["frame_start_char"]:
+#                 return None
+#         except serial.SerialException as e:
+#             print(e)
+#             return None
+#         return {"tag": tag, "data": data, "timestamp": time()}
+#
+#     def on_result_ready(self, result):
+#         if result is not None:
+#             emit_items = [item for item in result if item is not None]
+#             self.new_data.emit(emit_items)
+#
+#     @staticmethod
+#     def list_devices():
+#         device_names = [port.name for port in list_ports.comports()]
+#         return device_names
 
 
 class EITProcessor(Consumer, QtCore.QObject):

@@ -62,6 +62,10 @@ class Reader(Producer, QtCore.QObject):
     def on_state_changed(self, state):
         self.state_signal.emit(state)
 
+    @staticmethod
+    def list_devices():
+        return pyvisa.ResourceManager().list_resources()
+
 
 class QueueEmitter(Consumer, QtCore.QObject):
     state_signal = QtCore.pyqtSignal(str)
