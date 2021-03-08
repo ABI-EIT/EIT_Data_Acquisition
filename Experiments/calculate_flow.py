@@ -53,7 +53,7 @@ if __name__ == "__main__":
     data["abs_max"] = data.apply(lambda row: max(row["Flow1 (L/s)"], row["Flow2 (L/s)"], key=abs), axis=1)
 
     fs = 1000
-    fc = 50 # Cut-off frequency of the filter
+    fc = 50  # Cut-off frequency of the filter
     w = fc / (fs / 2)  # Normalize the frequency
     b, a = signal.butter(5, w, 'low')
     data["abs_max_filtered"] = signal.filtfilt(b, a, data["abs_max"])

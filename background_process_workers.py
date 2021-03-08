@@ -12,7 +12,10 @@ import csv
 import numpy as np
 import serial
 from serial.tools import list_ports
-
+from scipy import integrate
+from scipy import signal
+import pandas as pd
+import io
 
 class Reader(Producer, QtCore.QObject):
     # TODO convert this to pyserial
@@ -40,7 +43,7 @@ class Reader(Producer, QtCore.QObject):
         return {"configuration": configuration, "device": device}
 
     @staticmethod
-    def on_stopped(on_start_results, *args):
+    def on_stop(on_start_results, *args):
         print("Reader stopped")
         device = on_start_results["device"]
         if device is not None:
@@ -95,6 +98,80 @@ class QueueEmitter(Consumer, QtCore.QObject):
     @staticmethod
     def work(items, on_start_results, *args):
         return [item for item in items if item is not None]
+
+    def on_result_ready(self, results):
+        if results is not None and len(results) > 0:
+            self.new_data.emit([result for result in results if result is not None])
+
+
+class BidirectionalVenturiFlowCalculator(Consumer, QtCore.QObject):
+
+    state_signal = QtCore.pyqtSignal(str)
+    new_data = QtCore.pyqtSignal(list)
+
+    def __init__(self, work_timeout=0, buffer_size=1):
+        Consumer.__init__(self, work_timeout, buffer_size)
+        QtCore.QObject.__init__(self)
+
+    @staticmethod
+    def on_start(*args):
+        df = pd.DataFrame()
+        config = args[0]
+
+        return {"df": df, "config": config}
+
+    @staticmethod
+    def work(items, on_start_results, *args):
+        if items == []:
+            return None
+
+        df = on_start_results["df"]
+        config = on_start_results["config"]
+
+        tags = np.array([item["tag"] for item in items])
+        multipliers = np.array([config["{0}_multiplier".format(tag)] for tag in tags])
+        offsets = np.array([config["{0}_offset".format(tag)] for tag in tags])
+
+        data = np.array([item["data"] for item in items])
+        timestamp = np.array([item["timestamp"] for item in items])
+
+        data = (data-offsets)*multipliers
+
+        data_array = []
+        for i in range(len(data)):
+            row = [None] * len(set(tags))
+            row[list(set(tags)).index(tags[i])] = data[i]
+            data_array.append(row)
+
+        df_new = pd.DataFrame(columns=set(tags), data=data_array, index=pd.to_datetime(timestamp, unit="s"))
+        df.append(df_new)  # assume df_new is later than df
+
+        df = df[~df.index.duplicated(keep='first')]
+        df = df.resample("1ms").pad()
+
+        df = df.last(config["buffer"])  # select last n seconds
+
+        df["abs_max"] = df.apply(lambda row: max([row[col] for col in df.columns], key=abs), axis=1)
+        fs = config["sampling_freq"]
+        fc = config["cutoff_freq"]  # Cut-off frequency of the filter
+        w = fc / (fs / 2)  # Normalize the frequency
+        b, a = signal.butter(config["order"], w, 'low')
+        df["abs_max_filtered"] = signal.filtfilt(b, a, df["abs_max"])
+
+        df["abs_max_filtered"].mask(df["abs_max_filtered"].abs() <= config["flow_threshold"], 0, inplace=True)
+
+        df["Naive Volume (L)"] = integrate.cumtrapz(data["abs_max_filtered"], x=data.index.astype(np.int64) / 10 ** 9,
+                                                    initial=0 if "Naive Volume (L)" not in df.columns else df["Naive Volume (L)"].iloc[-1])
+
+        on_start_results["df"] = df
+
+        print(df["Naive Volume (L)"].iloc[-1])
+
+        return {"tag": "Volume", "data": list(df["Naive Volume (L)"]), "timestamp": df.index.astype(np.int64) / 10 ** 9}
+
+    @staticmethod
+    def on_stop(on_start_results, *args):
+        pass
 
     def on_result_ready(self, results):
         if results is not None and len(results) > 0:

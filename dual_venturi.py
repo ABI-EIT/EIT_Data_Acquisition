@@ -41,6 +41,18 @@ flow_plot_config = {
     "min_range": 2
 }
 
+bidirectional_venturi_config = {
+    "Flow1_multiplier": 0.09114830539,  # V1 calibration
+    "Flow2_multiplier": -0.08960919406,  # V2 calibration
+    "Flow1_offset": 0.03618421041453358,
+    "Flow2_offset": 0.012253753906233688,
+    "flow_threshold": 0.02,
+    "sampling_freq": 1000,
+    "cutoff_freq": 50,
+    "order": 5,
+    "buffer": "30s"
+}
+
 
 class MainWindow(QMainWindow, Ui_MainWindow):
     def __init__(self):
@@ -52,8 +64,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.vertical_layouts = [self.verticalLayoutFlow1, self.verticalLayoutFlow2]
         self.placeholder_widgets = [self.placeholderWidgetFlow1, self.placeholderWidgetFlow2]
         self.flow_combo_boxes = [self.comboBoxFlow1, self.comboBoxFlow2]
-        self.flow_readers = [Reader(tag="Flow1"), Reader(tag="Flow2")]
+        self.flow_readers = [Reader(tag="Flow1"), Reader(tag="Flow2")]  # Tags used for saving AND to refer to calibration in venturi config dict
         self.flow_emitters = [QueueEmitter(buffer_size=10000, work_timeout=.5), QueueEmitter(buffer_size=10000, work_timeout=.5)]
+        self.volume_calc = BidirectionalVenturiFlowCalculator(work_timeout=.5, buffer_size=1000)
         self.data_saver = DataSaver()
 
         self.populate_devices(0)
@@ -66,8 +79,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.flow_combo_boxes[0].currentTextChanged.connect(lambda text: self.change_flow_device(text, 0))
         self.flow_combo_boxes[1].currentTextChanged.connect(lambda text: self.change_flow_device(text, 1))
 
-        self.flow_readers[0].set_subscribers([self.flow_emitters[0].get_work_queue()])
-        self.flow_readers[1].set_subscribers([self.flow_emitters[1].get_work_queue()])
+        self.flow_readers[0].set_subscribers([self.flow_emitters[0].get_work_queue(), self.volume_calc])
+        self.flow_readers[1].set_subscribers([self.flow_emitters[1].get_work_queue(), self.volume_calc])
+        self.volume_calc.start_new(on_start_args=(bidirectional_venturi_config,))
 
         self.flow_emitters[0].new_data.connect(lambda items: self.update_flow_plot(items, 0))
         self.flow_emitters[1].new_data.connect(lambda items: self.update_flow_plot(items, 1))
