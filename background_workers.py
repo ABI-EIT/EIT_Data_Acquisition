@@ -71,8 +71,8 @@ class QueueEmitter(Consumer, QtCore.QObject):
     state_signal = QtCore.pyqtSignal(str)
     new_data = QtCore.pyqtSignal(list)
 
-    def __init__(self, buffer_size=1, buffer_timeout=0):
-        Consumer.__init__(self, buffer_size, buffer_timeout)
+    def __init__(self, buffer_size=1, work_timeout=0):
+        Consumer.__init__(self, buffer_size, work_timeout)
         QtCore.QObject.__init__(self)
 
     def on_start(self, *args):

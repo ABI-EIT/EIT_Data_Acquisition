@@ -103,7 +103,7 @@ class Producer(Worker):
                 last_worked = time.time()
                 result = work(on_start_results, *work_args)
                 for queue in work_queues:
-                    if ~queue.full():
+                    if not (queue.full()):
                         queue.put(result)
                 pipe_conn.send(result)
 
@@ -117,17 +117,15 @@ class Producer(Worker):
 
 
 class Consumer(Worker):
-    def __init__(self, work_timeout=100, buffer_size=1):
+    def __init__(self, work_timeout=100, buffer_size=1, max_q_size=0):
         super().__init__()
-        self.work_queues = [Queue(maxsize=1)]
+        self.work_queues = [Queue(maxsize=max_q_size)]
         self.work_timeout = work_timeout
         self.buffer_size = buffer_size
 
     def purge_queue(self):
         for i in range(self.work_queues[0].qsize()):
             self.work_queues[0].get()
-
-        self.work_queues[0].maxsize = 0
 
     # This can be used so that a queue that is subscribed to a
     # producer does not fill up while the consumer is not active

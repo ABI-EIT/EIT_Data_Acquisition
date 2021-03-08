@@ -109,6 +109,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.populate_devices()
         self.eit_reader = Reader(tag="EIT")
         self.flow_reader = Reader(tag="Flow")
+        self.flow_emitter = QueueEmitter(work_timeout=.1, buffer_size=10000)
         self.eit_processor = EITProcessor()
         self.data_saver = DataSaver()
         self.conf = default_conf
@@ -125,7 +126,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         self.eit_obj = self.initialize_eit_obj(default_pickle, self.conf)
         self.eit_reader.new_data.connect(
-            lambda item_list: [self.textEdit.append(item["data"]) for item in item_list])
+            lambda result: self.textEdit.append(result["data"]))
         self.eit_reader.set_subscribers([self.eit_processor.get_work_queue(), self.data_saver.get_work_queue()])
 
         self.set_background_button.clicked.connect(self.set_background)
@@ -133,8 +134,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.clear_background_button.clicked.connect(lambda: self.eit_processor.set_background(None))
         self.clear_background_button.setEnabled(False)
 
-        self.flow_reader.new_data.connect(lambda items: self.update_flow_plot(items))
-        self.flow_reader.set_subscribers([self.data_saver.get_work_queue()])
+        # self.flow_reader.new_data.connect(lambda result: self.update_flow_plot(result))
+        self.flow_reader.set_subscribers([self.data_saver.get_work_queue(), self.flow_emitter.get_work_queue()])
+        self.flow_emitter.new_data.connect(lambda results: self.update_flow_plot(results))
 
         self.populate_test_buttons()
 
@@ -306,6 +308,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def change_flow_device(self, text):
         self.flow_reader.start_new(on_start_args=(text, flow_configuration))
+        self.flow_emitter.start_new()
 
 
 if __name__ == '__main__':

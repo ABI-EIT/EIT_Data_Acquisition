@@ -11,7 +11,7 @@ import matplotlib.pyplot
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from abi_pyeit.app.eit import *
 import time
-from background_workers import *
+from background_process_workers import *
 from Toaster import Toaster
 
 Ui_MainWindow, QMainWindow = uic.loadUiType("layout/layout_dual_venturi.ui")
@@ -51,17 +51,26 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.flow_plot_axes = [None, None]
         self.vertical_layouts = [self.verticalLayoutFlow1, self.verticalLayoutFlow2]
         self.placeholder_widgets = [self.placeholderWidgetFlow1, self.placeholderWidgetFlow2]
-        self.populate_devices()
+        self.flow_combo_boxes = [self.comboBoxFlow1, self.comboBoxFlow2]
         self.flow_readers = [Reader(tag="Flow1"), Reader(tag="Flow2")]
-        self.flow_emitters = [QueueEmitter(buffer_size=10000, buffer_timeout=.5), QueueEmitter(buffer_size=10000, buffer_timeout=.5)]
+        self.flow_emitters = [QueueEmitter(buffer_size=10000, work_timeout=.5), QueueEmitter(buffer_size=10000, work_timeout=.5)]
         self.data_saver = DataSaver()
 
-        self.comboBoxFlow1.currentTextChanged.connect(lambda text: self.change_flow_device(text, 0))
-        self.comboBoxFlow2.currentTextChanged.connect(lambda text: self.change_flow_device(text, 1))
+        self.populate_devices(0)
+        self.populate_devices(1)
 
         self.startRecordingButton.clicked.connect(
             lambda: self.start_recording(self.dataFileSuffixTextEdit.toPlainText()))
         self.stopRecordingButton.clicked.connect(self.stop_recording)
+
+        self.flow_combo_boxes[0].currentTextChanged.connect(lambda text: self.change_flow_device(text, 0))
+        self.flow_combo_boxes[1].currentTextChanged.connect(lambda text: self.change_flow_device(text, 1))
+
+        self.flow_readers[0].set_subscribers([self.flow_emitters[0].get_work_queue()])
+        self.flow_readers[1].set_subscribers([self.flow_emitters[1].get_work_queue()])
+
+        self.flow_emitters[0].new_data.connect(lambda items: self.update_flow_plot(items, 0))
+        self.flow_emitters[1].new_data.connect(lambda items: self.update_flow_plot(items, 1))
 
         self.start_time = time()
 
@@ -150,22 +159,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         self.flow_plot_axes[i].figure.canvas.draw()
 
-    def populate_devices(self):
-        self.comboBoxFlow1.addItems(pyvisa.ResourceManager().list_resources())
-        self.comboBoxFlow1.setCurrentIndex(-1)
-        self.comboBoxFlow2.addItems(pyvisa.ResourceManager().list_resources())
-        self.comboBoxFlow2.setCurrentIndex(-1)
+    def populate_devices(self, i):
+        self.flow_combo_boxes[i].addItems(self.flow_readers[i].list_devices())
+        self.flow_combo_boxes[i].setCurrentIndex(-1)
 
     def change_flow_device(self, text, i):
-        if self.flow_emitters[i].get_state() != self.flow_emitters[i].started:
-            self.flow_readers[i].add_subscriber(self.flow_emitters[i].queue)
-            self.flow_emitters[i].start_new()
-            self.flow_emitters[i].new_data.connect(lambda items: self.update_flow_plot(items, i))
-
-        if self.flow_readers[i].get_state() != self.flow_readers[i].stopped:
-            self.flow_readers[i].set_stopped()
-
         self.flow_readers[i].start_new(on_start_args=(text, flow_configuration))
+        self.flow_emitters[i].start_new()
 
 
 if __name__ == '__main__':
