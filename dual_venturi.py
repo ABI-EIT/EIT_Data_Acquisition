@@ -42,27 +42,29 @@ flow_plot_config = {
 }
 
 bidirectional_venturi_config = {
+    "columns": ["Flow1", "Flow2"],
     "Flow1_multiplier": 0.09114830539,  # V1 calibration
     "Flow2_multiplier": -0.08960919406,  # V2 calibration
     "Flow1_offset": 0.03618421041453358,
     "Flow2_offset": 0.012253753906233688,
-    "flow_threshold": 0.02,
+    "flow_threshold": 0.01,
     "sampling_freq": 1000,
     "cutoff_freq": 50,
     "order": 5,
-    "buffer": "30s"
+    "buffer": "10s",
+    "resample": "1ms"
 }
 
 
 class MainWindow(QMainWindow, Ui_MainWindow):
     def __init__(self):
         super(MainWindow, self).__init__()
-        self.first_flow_plots = [True, True]
+        self.first_flow_plots = [True, True, True]
         self.setupUi(self)
-        self.flow_canvases = [None, None]
-        self.flow_plot_axes = [None, None]
-        self.vertical_layouts = [self.verticalLayoutFlow1, self.verticalLayoutFlow2]
-        self.placeholder_widgets = [self.placeholderWidgetFlow1, self.placeholderWidgetFlow2]
+        self.flow_canvases = [None, None, None]
+        self.flow_plot_axes = [None, None, None]
+        self.vertical_layouts = [self.verticalLayoutFlow1, self.verticalLayoutFlow2, self.verticalLayoutVolume]
+        self.placeholder_widgets = [self.placeholderWidgetFlow1, self.placeholderWidgetFlow2, self.placeholderWidgetVolume]
         self.flow_combo_boxes = [self.comboBoxFlow1, self.comboBoxFlow2]
         self.flow_readers = [Reader(tag="Flow1"), Reader(tag="Flow2")]  # Tags used for saving AND to refer to calibration in venturi config dict
         self.flow_emitters = [QueueEmitter(buffer_size=10000, work_timeout=.5), QueueEmitter(buffer_size=10000, work_timeout=.5)]
@@ -79,12 +81,14 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.flow_combo_boxes[0].currentTextChanged.connect(lambda text: self.change_flow_device(text, 0))
         self.flow_combo_boxes[1].currentTextChanged.connect(lambda text: self.change_flow_device(text, 1))
 
-        self.flow_readers[0].set_subscribers([self.flow_emitters[0].get_work_queue(), self.volume_calc])
-        self.flow_readers[1].set_subscribers([self.flow_emitters[1].get_work_queue(), self.volume_calc])
+        self.flow_readers[0].set_subscribers([self.flow_emitters[0].get_work_queue(), self.volume_calc.get_work_queue(), self.data_saver.get_work_queue()])
+        self.flow_readers[1].set_subscribers([self.flow_emitters[1].get_work_queue(), self.volume_calc.get_work_queue(), self.data_saver.get_work_queue()])
         self.volume_calc.start_new(on_start_args=(bidirectional_venturi_config,))
 
         self.flow_emitters[0].new_data.connect(lambda items: self.update_flow_plot(items, 0))
         self.flow_emitters[1].new_data.connect(lambda items: self.update_flow_plot(items, 1))
+        self.volume_calc.new_data.connect(lambda items: (self.update_flow_plot(items, 2), self.volumeLabel.setText("{0:.2}".format(items[-1]["data"]))))
+        self.zeroVolumeButton.clicked.connect(self.volume_calc.set_zero)
 
         self.start_time = time()
 
@@ -94,14 +98,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         self.data_saver.start_new(on_start_args=(suffix, data_saving_configuration))
 
-        for flow_reader in self.flow_readers:
-            flow_reader.add_subscriber(self.data_saver.queue)
-
         self.comboBoxFlow1.setEnabled(False)
         self.comboBoxFlow2.setEnabled(False)
         self.dataFileSuffixTextEdit.setEnabled(False)
 
-        message = "Started recording in: " + self.data_saver.get_filename()
+        message = "Started recording"# in: " + self.data_saver.get_filename()
 
         Toaster.showMessage(self, message)
 
@@ -113,10 +114,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.comboBoxFlow2.setEnabled(True)
         self.dataFileSuffixTextEdit.setEnabled(True)
 
-        self.data_saver.stop_at_queue_end()
-        for flow_reader in self.flow_readers:
-            flow_reader.remove_subscriber(self.data_saver.queue)
-            flow_reader.remove_subscriber(self.data_saver.queue)
+        self.data_saver.set_stop_at_queue_end()
         Toaster.showMessage(self, "Stopped recording")
 
     def add_flow_plot(self, i):
@@ -147,14 +145,20 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def update_flow_plot(self, items, i):
         new_data, new_times = self.parse_flow_data(items)
+
         if self.first_flow_plots[i]:
             self.add_flow_plot(i)
             self.first_flow_plots[i] = False
-            data = []
-            times = []
+            data = [0]
+            times = [0]
         else:
             data = self.flow_plot_axes[i].lines[0].get_ydata()
             times = self.flow_plot_axes[i].lines[0].get_xdata()
+
+        nd = [element for i, element in enumerate(new_data) if new_times[i] > times[-1]]
+        nt = [element for i, element in enumerate(new_times) if new_times[i] > times[-1]]
+        new_data = nd
+        new_times = nt
 
         self.flow_plot_axes[i].clear()
 

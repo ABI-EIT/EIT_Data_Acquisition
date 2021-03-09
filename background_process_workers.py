@@ -16,6 +16,7 @@ from scipy import integrate
 from scipy import signal
 import pandas as pd
 import io
+from multiprocessing import Pipe
 
 class Reader(Producer, QtCore.QObject):
     # TODO convert this to pyserial
@@ -112,6 +113,8 @@ class BidirectionalVenturiFlowCalculator(Consumer, QtCore.QObject):
     def __init__(self, work_timeout=0, buffer_size=1):
         Consumer.__init__(self, work_timeout, buffer_size)
         QtCore.QObject.__init__(self)
+        self.con1, con2 = Pipe()
+        self.work_args = (con2,)
 
     @staticmethod
     def on_start(*args):
@@ -122,8 +125,19 @@ class BidirectionalVenturiFlowCalculator(Consumer, QtCore.QObject):
 
     @staticmethod
     def work(items, on_start_results, *args):
-        if items == []:
+        if not items:
             return None
+
+        filtered = []
+        for item in items:
+            try:
+                if item is not None and item["data"] is not None:
+                    item["data"] = float(item["data"])
+                    filtered.append(item)
+            except ValueError:
+                pass
+
+        items = filtered
 
         df = on_start_results["df"]
         config = on_start_results["config"]
@@ -144,30 +158,49 @@ class BidirectionalVenturiFlowCalculator(Consumer, QtCore.QObject):
             data_array.append(row)
 
         df_new = pd.DataFrame(columns=set(tags), data=data_array, index=pd.to_datetime(timestamp, unit="s"))
-        df.append(df_new)  # assume df_new is later than df
+        if len(df) > 0:
+            df = df.append(df_new) # assume df_new is later than df
+        else:
+            df = df_new
 
         df = df[~df.index.duplicated(keep='first')]
-        df = df.resample("1ms").pad()
+        df = df.resample(config["resample"]).pad().fillna(method="pad")
 
-        df = df.last(config["buffer"])  # select last n seconds
+        window = df.last(config["buffer"])
+        if "Naive Volume (L)" in df.columns and len(window) < len(df):
+            vol_leaving_window = df["Naive Volume (L)"].loc[window.index[0]-1*df.index.freq]
+        else:
+            vol_leaving_window = 0
+        df = window # select last n seconds
+        if df.empty:
+            return None
 
-        df["abs_max"] = df.apply(lambda row: max([row[col] for col in df.columns], key=abs), axis=1)
+        df["abs_max"] = df.fillna(0).apply(lambda row: max([row[col] for col in list(set(config["columns"]).intersection(df.columns))], key=abs), axis=1)
+
         fs = config["sampling_freq"]
         fc = config["cutoff_freq"]  # Cut-off frequency of the filter
         w = fc / (fs / 2)  # Normalize the frequency
         b, a = signal.butter(config["order"], w, 'low')
-        df["abs_max_filtered"] = signal.filtfilt(b, a, df["abs_max"])
+        pad_len = 3 * max(len(a), len(b)) # default filtfilt pad len
+        if len(df["abs_max"]) < pad_len:
+            return None
+        df["abs_max_filtered"] = signal.filtfilt(b, a, df["abs_max"].fillna(0))
+        # df["abs_max_filtered"] = df["abs_max"].dropna()
 
         df["abs_max_filtered"].mask(df["abs_max_filtered"].abs() <= config["flow_threshold"], 0, inplace=True)
 
-        df["Naive Volume (L)"] = integrate.cumtrapz(data["abs_max_filtered"], x=data.index.astype(np.int64) / 10 ** 9,
-                                                    initial=0 if "Naive Volume (L)" not in df.columns else df["Naive Volume (L)"].iloc[-1])
+        df["Naive Volume (L)"] = integrate.cumtrapz(df["abs_max_filtered"], x=df.index.astype(np.int64) / 10 ** 9,
+                                                    initial=0) + vol_leaving_window
+
+        con = args[0]
+        if con.poll():
+            value = con.recv()
+            df = pd.DataFrame(columns=["Naive Volume (L)"], data=[value], index = [df.index[-1]])
 
         on_start_results["df"] = df
 
-        print(df["Naive Volume (L)"].iloc[-1])
-
-        return {"tag": "Volume", "data": list(df["Naive Volume (L)"]), "timestamp": df.index.astype(np.int64) / 10 ** 9}
+        return [{"tag": "Volume", "data": element[0], "timestamp": element[1]} for element in
+                zip(df["Naive Volume (L)"], df.index.astype(np.int64) / 10 ** 9)]
 
     @staticmethod
     def on_stop(on_start_results, *args):
@@ -176,6 +209,9 @@ class BidirectionalVenturiFlowCalculator(Consumer, QtCore.QObject):
     def on_result_ready(self, results):
         if results is not None and len(results) > 0:
             self.new_data.emit([result for result in results if result is not None])
+
+    def set_zero(self):
+        self.con1.send(0.0)
 
 
 class EITProcessor(Consumer, QtCore.QObject):
@@ -254,9 +290,9 @@ class DataSaver(Consumer):
     def __init__(self, buffer_size=1, buffer_timeout=0):
         Consumer.__init__(self, buffer_size, buffer_timeout)
         man = Manager()
-        self.file_dict = man.dict()
-        self.file_dict["file"] = None
-        self.on_start_args = (self.file_dict,)
+        self.filename_dict = man.dict()
+        self.filename_dict["filename"] = None
+        self.on_start_args = (self.filename_dict,)
 
     @staticmethod
     def create_unique_save_file(suffix, data_saving_configuration):
@@ -282,13 +318,16 @@ class DataSaver(Consumer):
         return open(directory + file_name + addition + ext, "x", newline="")
 
     @staticmethod
-    def on_start(suffix, data_saving_configuration, *args):
-        file_dict = args[0]
-        file_dict["file"] = DataSaver.create_unique_save_file(suffix, data_saving_configuration)
-        csv_writer = csv.writer(file_dict["file"] , delimiter=data_saving_configuration["delimiter"], quoting=csv.QUOTE_MINIMAL)
+    def on_start(*args):
+        filename_dict = args[0]
+        suffix = args[1]
+        data_saving_configuration = args[2]
+        file = DataSaver.create_unique_save_file(suffix, data_saving_configuration)
+        filename_dict["filename"] = file.name
+        csv_writer = csv.writer(file , delimiter=data_saving_configuration["delimiter"], quoting=csv.QUOTE_MINIMAL)
         csv_writer.writerow(data_saving_configuration["columns"])
         # TODO Write file with header section
-        return file_dict, csv_writer, data_saving_configuration
+        return file, csv_writer, data_saving_configuration
 
     @staticmethod
     def on_stopped(on_start_results, *args):
@@ -296,15 +335,14 @@ class DataSaver(Consumer):
         file_dict["file"].close()
 
     def get_filename(self):
-        return self.file_dict["file"].name
+        return self.filename_dict["filename"]
 
     @staticmethod
     def work(buffer, on_start_results,  *args):
         buffer = np.array(buffer)
         buffer = buffer[buffer != np.array(None)]
 
-        file_dict = on_start_results[0]
-        file = file_dict["file"]
+        file = on_start_results[0]
         csv_writer = on_start_results[1]
         data_saving_configuration = on_start_results[2]
 

@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from scipy import integrate
 from scipy import signal
 
-file_name = "data/2021-02-25T10_55_V1_10L_calibration.csv"
+# file_name = "data/2021-02-25T10_55_V1_10L_calibration.csv"
 # file_name = "data/2021-02-25T10_59_V2_10L_calibration.csv"
 # file_name = "data/2021-02-25T11_20_V1_10L_repeat_test.csv"
 # file_name = "data/2021-02-25T11_32_andrew_breathing_full_to_full_series.csv" # venturis in series
@@ -18,6 +18,8 @@ file_name = "data/2021-02-25T10_55_V1_10L_calibration.csv"
 # file_name = "data/2021-02-26T10_23_vernier_spirometer_drift_test.csv"
 
 # file_name = "data/2021-02-26T11_04_vernier_10L_calibration.csv"
+file_name = "data/2021-03-09T15_01_data.csv"
+
 
 
 # Venturi calibration
