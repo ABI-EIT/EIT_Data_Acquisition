@@ -18,32 +18,33 @@ from scipy import signal
 # file_name = "data/2021-02-26T10_23_vernier_spirometer_drift_test.csv"
 
 # file_name = "data/2021-02-26T11_04_vernier_10L_calibration.csv"
-file_name = "data/2021-03-09T15_01_data.csv"
+# file_name = "data/2021-03-09T15_01_data.csv"
 
 
-
-# Venturi calibration
-flow_1_multiplier = 0.09114830539  # V1 calibration
-flow_2_multiplier = 0.08960919406 # V2 calibration
-
-flow_1_offset = 0.03618421041453358
-flow_2_offset = 0.012253753906233688
+file_name = "data/20210309-162947.txt" # 3 speeds recorded with readArduino
+file_name = "data/2021-03-09T16_40_data.csv" # 3 speeds recorded with dual_venturi
+file_name = "data/2021-03-09T16_50_eit_data.csv" # 3 speeds recorded with main (with EIT)
 
 
-# # Vernier calibration
-# flow_1_multiplier = 26.0480572849
-# flow_2_multiplier = 1
+# # Venturi calibration
+# flow_1_multiplier = 0.09114830539  # V1 calibration
+# flow_2_multiplier = 0.08960919406 # V2 calibration
 #
-# flow_1_offset = 1.6280898048970747
-# flow_2_offset = 0
-#
+# flow_1_offset = 0.03618421041453358
+# flow_2_offset = 0.012253753906233688
+
 flow_threshold = 0.02
 # flow_threshold = 0
 
+flow_1_multiplier = 0.108666182  # Theoretical value from Alex
+flow_1_offset = 0
+flow_2_multiplier = 0.108666182
+flow_2_offset = 0
+
+cols = ["Time", "Flow1", "Flow2"]
 
 if __name__ == "__main__":
-
-    data = pd.read_csv(file_name, dtype=float, index_col=0, ).fillna(method="ffill")
+    data = pd.read_csv(file_name, dtype=float, usecols=cols, index_col=0).fillna(method="ffill")
     data.index = data.index - data.index[0]
     data.index = pd.to_datetime(data.index, unit="s")
     data = data[~data.index.duplicated(keep='first')]

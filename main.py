@@ -170,7 +170,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         for button in self.test_buttons:
             button.setEnabled(True)
 
-        message = "Started recording in: " + self.data_saver.get_filename()
+        message = "Started recording in: " #+ self.data_saver.get_filename()
         Toaster.showMessage(self, message)
 
     def stop_recording(self):
