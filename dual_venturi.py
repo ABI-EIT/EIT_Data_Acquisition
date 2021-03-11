@@ -35,7 +35,7 @@ data_saving_configuration = {
     "buffer_timeout": .5
 }
 flow_plot_config = {
-    "buffer": 18000,
+    "buffer": 60000,
     "slope": 1,
     "offset": 0,
     "min_range": 2

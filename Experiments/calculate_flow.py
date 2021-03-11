@@ -21,8 +21,8 @@ from scipy import signal
 # file_name = "data/2021-03-09T15_01_data.csv"
 
 
-file_name = "data/20210309-162947.txt" # 3 speeds recorded with readArduino
-file_name = "data/2021-03-09T16_40_data.csv" # 3 speeds recorded with dual_venturi
+# file_name = "data/20210309-162947.txt" # 3 speeds recorded with readArduino
+# file_name = "data/2021-03-09T16_40_data.csv" # 3 speeds recorded with dual_venturi
 file_name = "data/2021-03-09T16_50_eit_data.csv" # 3 speeds recorded with main (with EIT)
 
 
@@ -44,10 +44,15 @@ flow_2_offset = 0
 cols = ["Time", "Flow1", "Flow2"]
 
 if __name__ == "__main__":
-    data = pd.read_csv(file_name, dtype=float, usecols=cols, index_col=0).fillna(method="ffill")
+    data = pd.read_csv(file_name, dtype=float, usecols=cols, index_col=0)
     data.index = data.index - data.index[0]
+    data = data.groupby(data.index).first()  # In groups of duplicate index, for each column, find the first non na row. (This merges duplicate timestamps keeping non na cells)
+    mean_freq = 1/(data["Flow1"].dropna().index[-1]/len(data["Flow1"].dropna()))
+    print("Mean frequency is %.2fhz" % mean_freq)
+    time_deltas = [*data.index[1:], np.NaN] - data.index
+    plt.plot(time_deltas, marker=".")
+    data = data.fillna(method="pad")  # All measurements collected at different times, so we pad to get columns side by side
     data.index = pd.to_datetime(data.index, unit="s")
-    data = data[~data.index.duplicated(keep='first')]
     data = data.resample("1ms").pad()
 
     data["Flow1 (L/s)"] = (data["Flow1"].pow(.5).fillna(0) - flow_1_offset) * flow_1_multiplier
