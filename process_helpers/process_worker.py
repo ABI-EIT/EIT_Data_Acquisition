@@ -103,7 +103,7 @@ class Producer(Worker):
                 last_worked = time.time()
                 result = work(on_start_results, *work_args)
                 for queue in work_queues:
-                    if not (queue.full()):
+                    if queue.ready and not (queue.full()):
                         queue.put(result)
                 pipe_conn.send(result)
 
@@ -117,9 +117,9 @@ class Producer(Worker):
 
 
 class Consumer(Worker):
-    def __init__(self, work_timeout=100, buffer_size=1, max_q_size=0):
+    def __init__(self, work_timeout=100, buffer_size=1):
         super().__init__()
-        self.work_queues = [Queue(maxsize=max_q_size)]
+        self.work_queues = [ReadyQueue()]
         self.work_timeout = work_timeout
         self.buffer_size = buffer_size
 
@@ -133,7 +133,7 @@ class Consumer(Worker):
         self.work_queues[0].maxsize = 1
 
     def start_new(self, on_start_args=(), work_args=(), on_stopped_args=()):
-        self.purge_queue()
+        self.work_queues[0].ready = True
         super().start_new(on_start_args=on_start_args, work_args=work_args, on_stopped_args=on_stopped_args)
 
     @staticmethod
@@ -158,6 +158,7 @@ class Consumer(Worker):
                     state.value = Worker.stopped
                     break
 
+        work_queue.ready = False
         on_stop(on_start_results, *on_stopped_args)
 
     @staticmethod
@@ -171,3 +172,9 @@ class Consumer(Worker):
 
     def set_stop_at_queue_end(self):
         self.state.value = Worker.stop_at_queue_end
+
+
+class ReadyQueue(Queue):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.ready = False
