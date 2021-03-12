@@ -17,9 +17,11 @@ class Worker:
     def __init__(self):
         self.process = None
         self.result_thread = None
+        self.message_thread = None
         self.work_queues = []
         self.state = Value('i', 1)
-        self.result_pipe_parent, self.result_pipe_child = Pipe()
+        self.result_pipe_parent, self.result_pipe_child = Pipe()  # Producer and Consumer put results into this pipe
+        self.message_pipe_parent, self.message_pipe_child = Pipe()  # Derived classes have access to this through on_start, on_stop, and work
         atexit.register(self.set_stopped)
         self.work_timeout = 0
         self.buffer_size = 1
@@ -40,10 +42,12 @@ class Worker:
                                args=(self.work, self.on_start, self.on_stop, self.state, self.work_queues,
                                      (*self.on_start_args, *on_start_args), (*self.work_args, *work_args),
                                      (*self.on_stopped_args, *on_stopped_args), self.result_pipe_child,
-                                     self.work_timeout, self.buffer_size))
+                                     self.message_pipe_child, self.work_timeout, self.buffer_size))
         self.process.start()
         self.result_thread = Thread(target=self.wait_on_result_pipe, daemon=True)
         self.result_thread.start()
+        self.message_thread = Thread(target=self.wait_on_message_pipe, daemon=True)
+        self.message_thread.start()
 
     @staticmethod
     @abstractmethod
@@ -56,11 +60,11 @@ class Worker:
         pass
 
     @staticmethod
-    def on_start(*args):
+    def on_start(state, message_pipe, *on_start_args):
         pass
 
     @staticmethod
-    def on_stop(*args):
+    def on_stop(on_start_results, state, message_pipe, *on_stopped_args):
         pass
 
     def set_stopped(self):
@@ -71,7 +75,15 @@ class Worker:
             result = self.result_pipe_parent.recv()
             self.on_result_ready(result)
 
+    def wait_on_message_pipe(self):
+        while 1:
+            message = self.message_pipe_parent.recv()
+            self.on_message_ready(message)
+
     def on_result_ready(self, result):
+        pass
+
+    def on_message_ready(self, message):
         pass
 
 
@@ -94,26 +106,26 @@ class Producer(Worker):
 
     @staticmethod
     def work_loop(work, on_start, on_stop, state, work_queues,
-                  on_start_args, work_args, on_stopped_args, pipe_conn, work_timeout, buffer_size):
+                  on_start_args, work_args, on_stopped_args, result_pipe, message_pipe, work_timeout, buffer_size):
         # Producer does not make use of the buffer size argument
         assert buffer_size == 1
-        on_start_results = on_start(state, *on_start_args)
+        on_start_results = on_start(state, message_pipe, *on_start_args)
 
         last_worked = time.time()
         while state.value != Worker.stopped:
             if time.time()-last_worked >= work_timeout:
                 last_worked = time.time()
-                result = work(on_start_results, state, *work_args)
+                result = work(on_start_results, state, message_pipe, *work_args)
                 for queue in work_queues:
                     if queue.is_ready() and not (queue.full()):
                         queue.put(result)
-                pipe_conn.send(result)
+                result_pipe.send(result)
 
-        on_stop(on_start_results, state, *on_stopped_args)
+        on_stop(on_start_results, state, message_pipe, *on_stopped_args)
 
     @staticmethod
     @abstractmethod
-    def work(on_start_results, state, *args):
+    def work(on_start_results, state, message_pipe, *args):
         # Gets called in loop. Use self.set_stopped() to stop
         pass
 
@@ -131,12 +143,12 @@ class Consumer(Worker):
 
     @staticmethod
     def work_loop(work, on_start, on_stop, state, work_queues,
-                  on_start_args, work_args, on_stopped_args, pipe_conn, work_timeout, buffer_size):
+                  on_start_args, work_args, on_stopped_args, result_pipe, message_pipe, work_timeout, buffer_size):
         # Consumer only uses one work queue: its own
         assert len(work_queues) == 1
         work_queue = work_queues[0]
 
-        on_start_results = on_start(state, *on_start_args)
+        on_start_results = on_start(state, message_pipe, *on_start_args)
 
         last_worked = time.time()
         while state.value != Worker.stopped:
@@ -145,18 +157,22 @@ class Consumer(Worker):
                state.value == Worker.stop_at_queue_end:
                 last_worked = time.time()
                 items = [work_queue.get() for i in range(work_queue.qsize())]
-                results = work(items, on_start_results, state, *work_args)
-                pipe_conn.send(results)
+                results = work(items, on_start_results, state, message_pipe, *work_args)
+                try:
+                    result_pipe.send(results)
+                except BrokenPipeError:
+                    if state.value != Worker.stopped:
+                        raise
                 if state.value == Worker.stop_at_queue_end:
                     state.value = Worker.stopped
                     break
 
         work_queue.set_not_ready()
-        on_stop(on_start_results, state, *on_stopped_args)
+        on_stop(on_start_results, state, message_pipe, *on_stopped_args)
 
     @staticmethod
     @abstractmethod
-    def work(items, on_start_results, state, *args):
+    def work(items, on_start_results, state, message_pipe, *args):
         # Gets called in loop. Use self.set_stopped() to stop
         pass
 

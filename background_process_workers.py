@@ -34,9 +34,10 @@ class Reader(Producer, QtCore.QObject):
         Producer.__init__(self, *args, **kwargs)
         QtCore.QObject.__init__(self)
         self.work_args = (tag,)
+        self.on_connect_failed = None
 
     @staticmethod
-    def on_start(state, *args):
+    def on_start(state, message_pipe, *args):
         device_name = args[0]
         configuration = args[1]
         try:
@@ -46,10 +47,11 @@ class Reader(Producer, QtCore.QObject):
             device = None
             print(e)
             state.value = Producer.stopped
+            message_pipe.send("connect failed")
         return {"configuration": configuration, "device": device}
 
     @staticmethod
-    def on_stop(on_start_results, state, *args):
+    def on_stop(on_start_results, state, message_pipe, *args):
         print("Reader stopped")
         device = on_start_results["device"]
         if device is not None:
@@ -61,7 +63,7 @@ class Reader(Producer, QtCore.QObject):
         pass
 
     @staticmethod
-    def work(on_start_results, state, *args):
+    def work(on_start_results, state, message_pipe, *args):
         tag = args[0]
         device = on_start_results["device"]
         configuration = on_start_results["configuration"]
@@ -85,6 +87,11 @@ class Reader(Producer, QtCore.QObject):
         if result is not None:
             self.new_data.emit(result)
 
+    def on_message_ready(self, message):
+        if message == "connect failed":
+            if self.on_connect_failed is not None:
+                self.on_connect_failed()
+
     @staticmethod
     def list_devices():
         device_names = [port.name for port in list_ports.comports()]
@@ -102,7 +109,7 @@ class QueueEmitter(Consumer, QtCore.QObject):
         QtCore.QObject.__init__(self)
 
     @staticmethod
-    def work(items, on_start_results, state, *args):
+    def work(items, on_start_results, state, message_pipe, *args):
         return [item for item in items if item is not None]
 
     def on_result_ready(self, results):
@@ -122,14 +129,14 @@ class BidirectionalVenturiFlowCalculator(Consumer, QtCore.QObject):
         self.work_args = (con2,)
 
     @staticmethod
-    def on_start(state, *args):
+    def on_start(state, message_pipe, *args):
         df = pd.DataFrame()
         config = args[0]
 
         return {"df": df, "config": config}
 
     @staticmethod
-    def work(items, on_start_results, state, *args):
+    def work(items, on_start_results, state, message_pipe, *args):
         if not items:
             return None
 
@@ -208,7 +215,7 @@ class BidirectionalVenturiFlowCalculator(Consumer, QtCore.QObject):
                 zip(df["Naive Volume (L)"], df.index.astype(np.int64) / 10 ** 9)]
 
     @staticmethod
-    def on_stop(on_start_results, state, *args):
+    def on_stop(on_start_results, state, message_pipe, *args):
         pass
 
     def on_result_ready(self, results):
@@ -232,7 +239,7 @@ class EITProcessor(Consumer, QtCore.QObject):
         self.on_start_args = (self.bg_dict,)
 
     @staticmethod
-    def on_start(state, *args):
+    def on_start(state, message_pipe, *args):
         bg_dict = args[0]
         eit_obj = args[1]
         conf = args[2]
@@ -259,7 +266,7 @@ class EITProcessor(Consumer, QtCore.QObject):
         return self.bg_dict["current_frame"]
 
     @staticmethod
-    def work(items, on_start_results, state, *args):
+    def work(items, on_start_results, state, message_pipe, *args):
         bg_dict = on_start_results["bg_dict"]
         eit_obj = on_start_results["eit_obj"]
         conf = on_start_results["conf"]
@@ -323,7 +330,7 @@ class DataSaver(Consumer):
         return open(directory + file_name + addition + ext, "x", newline="")
 
     @staticmethod
-    def on_start(state, *args):
+    def on_start(state, message_pipe, *args):
         filename_dict = args[0]
         suffix = args[1]
         data_saving_configuration = args[2]
@@ -335,7 +342,7 @@ class DataSaver(Consumer):
         return file, csv_writer, data_saving_configuration
 
     @staticmethod
-    def on_stopped(on_start_results, state, *args):
+    def on_stop(on_start_results, state, message_pipe, *args):
         file_dict = on_start_results[0]
         file_dict["file"].close()
 
@@ -343,7 +350,7 @@ class DataSaver(Consumer):
         return self.filename_dict["filename"]
 
     @staticmethod
-    def work(buffer, on_start_results, state,  *args):
+    def work(buffer, on_start_results, state, message_pipe, *args):
         buffer = np.array(buffer)
         buffer = buffer[buffer != np.array(None)]
 

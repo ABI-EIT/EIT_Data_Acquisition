@@ -137,6 +137,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         # self.flow_reader.new_data.connect(lambda result: self.update_flow_plot(result))
         self.flow_reader.set_subscribers([self.data_saver.get_work_queue(), self.flow_emitter.get_work_queue()])
+        self.flow_reader.on_connect_failed = lambda: print("Flow reader connect failed")
         self.flow_emitter.new_data.connect(lambda results: self.update_flow_plot(results))
 
         self.populate_test_buttons()
