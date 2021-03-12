@@ -186,7 +186,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             button.setChecked(False)
 
         self.data_saver.stop_at_queue_end()
-        self.data_saver.close_queue()
 
         Toaster.showMessage(self, "Stopped recording")
 

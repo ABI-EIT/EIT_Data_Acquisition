@@ -1,8 +1,10 @@
-from multiprocessing import Process, Value, Pipe, queues, get_context
+from multiprocessing import Process, Value, Pipe, Queue
 from threading import Thread
 import time
 from abc import ABCMeta, abstractmethod
 import atexit
+from queue import Empty
+import ctypes
 
 
 class Worker:
@@ -103,7 +105,7 @@ class Producer(Worker):
                 last_worked = time.time()
                 result = work(on_start_results, state, *work_args)
                 for queue in work_queues:
-                    if queue.ready and not (queue.full()):
+                    if queue.is_ready() and not (queue.full()):
                         queue.put(result)
                 pipe_conn.send(result)
 
@@ -119,21 +121,12 @@ class Producer(Worker):
 class Consumer(Worker):
     def __init__(self, work_timeout=100, buffer_size=1):
         super().__init__()
-        self.work_queues = [ready_queue()]
+        self.work_queues = [ReadyQueue()]
         self.work_timeout = work_timeout
         self.buffer_size = buffer_size
 
-    def purge_queue(self):
-        for i in range(self.work_queues[0].qsize()):
-            self.work_queues[0].get()
-
-    # This can be used so that a queue that is subscribed to a
-    # producer does not fill up while the consumer is not active
-    def close_queue(self):
-        self.work_queues[0].maxsize = 1
-
     def start_new(self, on_start_args=(), work_args=(), on_stopped_args=()):
-        self.work_queues[0].ready = True
+        self.work_queues[0].set_ready()
         super().start_new(on_start_args=on_start_args, work_args=work_args, on_stopped_args=on_stopped_args)
 
     @staticmethod
@@ -158,7 +151,7 @@ class Consumer(Worker):
                     state.value = Worker.stopped
                     break
 
-        work_queue.ready = False
+        work_queue.set_not_ready()
         on_stop(on_start_results, state, *on_stopped_args)
 
     @staticmethod
@@ -174,11 +167,39 @@ class Consumer(Worker):
         self.state.value = Worker.stop_at_queue_end
 
 
-def ready_queue(*args, **kwargs):
-    return ReadyQueue(ctx=get_context(), *args, **kwargs)
+class ReadyQueue:
+    def __init__(self, *args, **kwargs):
+        self.queue = Queue(*args, **kwargs)
+        self._ready = Value(ctypes.c_bool, False)
 
+    def set_ready(self):
+        self._ready.value = True
 
-class ReadyQueue(queues.Queue):
-    def __init__(self, ctx, *args, **kwargs):
-        super(ReadyQueue, self).__init__(ctx=ctx, *args, **kwargs)
-        self.ready = False
+    def set_not_ready(self):
+        self._ready.value = False
+        self.clear()
+
+    def is_ready(self):
+        return self._ready.value
+
+    def clear(self):
+        try:
+            while True:
+                self.queue.get(block=False)
+        except Empty:
+            pass
+
+    def get(self, block=True, timeout=None):
+        return self.queue.get(block, timeout)
+
+    def put(self, obj, block=True, timeout=None):
+        return self.queue.put(obj, block, timeout)
+
+    def full(self):
+        return self.queue.full()
+
+    def empty(self):
+        return self.queue.empty()
+
+    def qsize(self):
+        return self.queue.qsize()
