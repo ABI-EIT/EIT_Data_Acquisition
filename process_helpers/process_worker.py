@@ -1,4 +1,4 @@
-from multiprocessing import Process, Queue, Value, Pipe
+from multiprocessing import Process, Value, Pipe, queues, get_context
 from threading import Thread
 import time
 from abc import ABCMeta, abstractmethod
@@ -38,7 +38,7 @@ class Worker:
                                args=(self.work, self.on_start, self.on_stop, self.state, self.work_queues,
                                      (*self.on_start_args, *on_start_args), (*self.work_args, *work_args),
                                      (*self.on_stopped_args, *on_stopped_args), self.result_pipe_child,
-                                     self.work_timeout, self.buffer_size), daemon=True)
+                                     self.work_timeout, self.buffer_size))
         self.process.start()
         self.result_thread = Thread(target=self.wait_on_result_pipe, daemon=True)
         self.result_thread.start()
@@ -95,23 +95,23 @@ class Producer(Worker):
                   on_start_args, work_args, on_stopped_args, pipe_conn, work_timeout, buffer_size):
         # Producer does not make use of the buffer size argument
         assert buffer_size == 1
-        on_start_results = on_start(*on_start_args)
+        on_start_results = on_start(state, *on_start_args)
 
         last_worked = time.time()
         while state.value != Worker.stopped:
             if time.time()-last_worked >= work_timeout:
                 last_worked = time.time()
-                result = work(on_start_results, *work_args)
+                result = work(on_start_results, state, *work_args)
                 for queue in work_queues:
                     if queue.ready and not (queue.full()):
                         queue.put(result)
                 pipe_conn.send(result)
 
-        on_stop(on_start_results, *on_stopped_args)
+        on_stop(on_start_results, state, *on_stopped_args)
 
     @staticmethod
     @abstractmethod
-    def work(on_start_results, *args):
+    def work(on_start_results, state, *args):
         # Gets called in loop. Use self.set_stopped() to stop
         pass
 
@@ -119,7 +119,7 @@ class Producer(Worker):
 class Consumer(Worker):
     def __init__(self, work_timeout=100, buffer_size=1):
         super().__init__()
-        self.work_queues = [ReadyQueue()]
+        self.work_queues = [ready_queue()]
         self.work_timeout = work_timeout
         self.buffer_size = buffer_size
 
@@ -143,7 +143,7 @@ class Consumer(Worker):
         assert len(work_queues) == 1
         work_queue = work_queues[0]
 
-        on_start_results = on_start(*on_start_args)
+        on_start_results = on_start(state, *on_start_args)
 
         last_worked = time.time()
         while state.value != Worker.stopped:
@@ -152,18 +152,18 @@ class Consumer(Worker):
                state.value == Worker.stop_at_queue_end:
                 last_worked = time.time()
                 items = [work_queue.get() for i in range(work_queue.qsize())]
-                results = work(items, on_start_results, *work_args)
+                results = work(items, on_start_results, state, *work_args)
                 pipe_conn.send(results)
                 if state.value == Worker.stop_at_queue_end:
                     state.value = Worker.stopped
                     break
 
         work_queue.ready = False
-        on_stop(on_start_results, *on_stopped_args)
+        on_stop(on_start_results, state, *on_stopped_args)
 
     @staticmethod
     @abstractmethod
-    def work(items, on_start_results, *args):
+    def work(items, on_start_results, state, *args):
         # Gets called in loop. Use self.set_stopped() to stop
         pass
 
@@ -174,7 +174,11 @@ class Consumer(Worker):
         self.state.value = Worker.stop_at_queue_end
 
 
-class ReadyQueue(Queue):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+def ready_queue(*args, **kwargs):
+    return ReadyQueue(ctx=get_context(), *args, **kwargs)
+
+
+class ReadyQueue(queues.Queue):
+    def __init__(self, ctx, *args, **kwargs):
+        super(ReadyQueue, self).__init__(ctx=ctx, *args, **kwargs)
         self.ready = False

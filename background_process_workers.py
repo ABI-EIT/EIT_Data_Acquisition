@@ -18,6 +18,7 @@ import pandas as pd
 import io
 from multiprocessing import Pipe
 
+
 class Reader(Producer, QtCore.QObject):
     # TODO convert this to pyserial
     """
@@ -35,16 +36,20 @@ class Reader(Producer, QtCore.QObject):
         self.work_args = (tag,)
 
     @staticmethod
-    def on_start(*args):
+    def on_start(state, *args):
         device_name = args[0]
         configuration = args[1]
-
-        device = serial.Serial(port=device_name, baudrate=configuration["baud"], timeout=configuration["read_timeout"])
-        device.flushInput()
+        try:
+            device = serial.Serial(port=device_name, baudrate=configuration["baud"], timeout=configuration["read_timeout"])
+            device.flushInput()
+        except serial.SerialException as e:
+            device = None
+            print(e)
+            state.value = Producer.stopped
         return {"configuration": configuration, "device": device}
 
     @staticmethod
-    def on_stop(on_start_results, *args):
+    def on_stop(on_start_results, state, *args):
         print("Reader stopped")
         device = on_start_results["device"]
         if device is not None:
@@ -56,7 +61,7 @@ class Reader(Producer, QtCore.QObject):
         pass
 
     @staticmethod
-    def work(on_start_results, *args):
+    def work(on_start_results, state, *args):
         tag = args[0]
         device = on_start_results["device"]
         configuration = on_start_results["configuration"]
@@ -97,7 +102,7 @@ class QueueEmitter(Consumer, QtCore.QObject):
         QtCore.QObject.__init__(self)
 
     @staticmethod
-    def work(items, on_start_results, *args):
+    def work(items, on_start_results, state, *args):
         return [item for item in items if item is not None]
 
     def on_result_ready(self, results):
@@ -117,14 +122,14 @@ class BidirectionalVenturiFlowCalculator(Consumer, QtCore.QObject):
         self.work_args = (con2,)
 
     @staticmethod
-    def on_start(*args):
+    def on_start(state, *args):
         df = pd.DataFrame()
         config = args[0]
 
         return {"df": df, "config": config}
 
     @staticmethod
-    def work(items, on_start_results, *args):
+    def work(items, on_start_results, state, *args):
         if not items:
             return None
 
@@ -203,7 +208,7 @@ class BidirectionalVenturiFlowCalculator(Consumer, QtCore.QObject):
                 zip(df["Naive Volume (L)"], df.index.astype(np.int64) / 10 ** 9)]
 
     @staticmethod
-    def on_stop(on_start_results, *args):
+    def on_stop(on_start_results, state, *args):
         pass
 
     def on_result_ready(self, results):
@@ -227,7 +232,7 @@ class EITProcessor(Consumer, QtCore.QObject):
         self.on_start_args = (self.bg_dict,)
 
     @staticmethod
-    def on_start(*args):
+    def on_start(state, *args):
         bg_dict = args[0]
         eit_obj = args[1]
         conf = args[2]
@@ -254,7 +259,7 @@ class EITProcessor(Consumer, QtCore.QObject):
         return self.bg_dict["current_frame"]
 
     @staticmethod
-    def work(items, on_start_results, *args):
+    def work(items, on_start_results, state, *args):
         bg_dict = on_start_results["bg_dict"]
         eit_obj = on_start_results["eit_obj"]
         conf = on_start_results["conf"]
@@ -318,7 +323,7 @@ class DataSaver(Consumer):
         return open(directory + file_name + addition + ext, "x", newline="")
 
     @staticmethod
-    def on_start(*args):
+    def on_start(state, *args):
         filename_dict = args[0]
         suffix = args[1]
         data_saving_configuration = args[2]
@@ -330,7 +335,7 @@ class DataSaver(Consumer):
         return file, csv_writer, data_saving_configuration
 
     @staticmethod
-    def on_stopped(on_start_results, *args):
+    def on_stopped(on_start_results, state, *args):
         file_dict = on_start_results[0]
         file_dict["file"].close()
 
@@ -338,7 +343,7 @@ class DataSaver(Consumer):
         return self.filename_dict["filename"]
 
     @staticmethod
-    def work(buffer, on_start_results,  *args):
+    def work(buffer, on_start_results, state,  *args):
         buffer = np.array(buffer)
         buffer = buffer[buffer != np.array(None)]
 
