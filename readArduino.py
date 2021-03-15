@@ -6,7 +6,7 @@ import serial
 
 i = 0
 
-ser = serial.Serial('COM10', 115200)
+ser = serial.Serial('COM7', 115200)
 ser.close()
 ser.open()
 ser.flushInput()

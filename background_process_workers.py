@@ -20,7 +20,6 @@ from multiprocessing import Pipe
 
 
 class Reader(Producer, QtCore.QObject):
-    # TODO convert this to pyserial
     """
         Reader sends messages of type:
             { "tag": string
@@ -343,8 +342,8 @@ class DataSaver(Consumer):
 
     @staticmethod
     def on_stop(on_start_results, state, message_pipe, *args):
-        file_dict = on_start_results[0]
-        file_dict["file"].close()
+        file = on_start_results[0]
+        file.close()
 
     def get_filename(self):
         return self.filename_dict["filename"]

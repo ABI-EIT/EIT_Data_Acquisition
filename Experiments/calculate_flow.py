@@ -24,6 +24,7 @@ from scipy import signal
 # file_name = "data/20210309-162947.txt" # 3 speeds recorded with readArduino
 # file_name = "data/2021-03-09T16_40_data.csv" # 3 speeds recorded with dual_venturi
 file_name = "data/2021-03-09T16_50_eit_data.csv" # 3 speeds recorded with main (with EIT)
+file_name = "data/2021-03-15T16_39_eit_data.csv"
 
 
 # # Venturi calibration

@@ -72,13 +72,19 @@ class Worker:
 
     def wait_on_result_pipe(self):
         while 1:
-            result = self.result_pipe_parent.recv()
-            self.on_result_ready(result)
+            try:
+                result = self.result_pipe_parent.recv()
+                self.on_result_ready(result)
+            except BrokenPipeError:
+                return
 
     def wait_on_message_pipe(self):
         while 1:
-            message = self.message_pipe_parent.recv()
-            self.on_message_ready(message)
+            try:
+                message = self.message_pipe_parent.recv()
+                self.on_message_ready(message)
+            except BrokenPipeError:
+                return
 
     def on_result_ready(self, result):
         pass
@@ -120,8 +126,10 @@ class Producer(Worker):
                     if queue.is_ready() and not (queue.full()):
                         queue.put(result)
                 result_pipe.send(result)
+                # sleep until it's time to work again (if there is time)
 
         on_stop(on_start_results, state, message_pipe, *on_stopped_args)
+
 
     @staticmethod
     @abstractmethod
@@ -160,9 +168,9 @@ class Consumer(Worker):
                 results = work(items, on_start_results, state, message_pipe, *work_args)
                 try:
                     result_pipe.send(results)
-                except BrokenPipeError:
+                except BrokenPipeError as e:
                     if state.value != Worker.stopped:
-                        raise
+                        print(e)
                 if state.value == Worker.stop_at_queue_end:
                     state.value = Worker.stopped
                     break
