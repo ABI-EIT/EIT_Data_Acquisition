@@ -66,15 +66,7 @@ if __name__ == "__main__":
 
     above = data["abs_max_filtered"] >= trigger
     up = np.logical_and(above == False, [*above[1:], False])
-    down = np.logical_and(above == True, [*(above[1:]==False), False])
-
-    # diffs = []
-    # ind_up = 0
-    # ind_down = 0
-    # for i in range(up.sum()):
-    #     ind_up = up[ind_up:].iloc[1:].idxmax()
-    #     ind_down = down[ind_down:].iloc[1:].idxmax()
-    #     diffs.append(data["Naive Volume (L)"].loc[ind_down]-data["Naive Volume (L)"].loc[ind_up])
+    down = np.logical_and(above == True, [*(above[1:] == False), False])
 
     change = np.logical_or(up, down)
     data["categories"] = np.cumsum(change)
