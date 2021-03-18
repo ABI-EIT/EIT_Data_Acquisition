@@ -34,6 +34,7 @@ class Reader(Producer, QtCore.QObject):
         QtCore.QObject.__init__(self)
         self.work_args = (tag,)
         self.on_connect_failed = None
+        self.on_connect_succeeded = None
 
     @staticmethod
     def on_start(state, message_pipe, *args):
@@ -42,6 +43,7 @@ class Reader(Producer, QtCore.QObject):
         try:
             device = serial.Serial(port=device_name, baudrate=configuration["baud"], timeout=configuration["read_timeout"])
             device.flushInput()
+            message_pipe.send("connect succeeded")
         except serial.SerialException as e:
             device = None
             print(e)
@@ -90,6 +92,9 @@ class Reader(Producer, QtCore.QObject):
         if message == "connect failed":
             if self.on_connect_failed is not None:
                 self.on_connect_failed()
+        if message == "connect succeeded":
+            if self.on_connect_succeeded is not None:
+                self.on_connect_succeeded()
 
     @staticmethod
     def list_devices():

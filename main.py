@@ -36,7 +36,7 @@ data_saving_configuration = {
     "directory": "data/",
     "format": "%Y-%m-%dT%H_%M_eit",
     "default_suffix": "data",
-    "columns": ["Time", "Tag", "Flow", "EIT"],
+    "columns": ["Time", "Tag", "Flow1", "Flow2", "EIT"],
     "timestamp_format": "raw",
     "delimiter": ",",
     "extension": ".csv",
@@ -135,6 +135,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.eit_reader.new_data.connect(
             lambda result: self.textEdit.append(result["data"]))
         self.eit_reader.set_subscribers([self.eit_processor.get_work_queue(), self.data_saver.get_work_queue()])
+        self.eit_reader.on_connect_failed = self.eit_connect_failed
 
         self.set_background_button.clicked.connect(self.set_background)
         self.clear_background_button.clicked.connect(lambda: self.eit_processor.set_background(None))
@@ -144,6 +145,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         self.flow_readers[0].set_subscribers([self.volume_calc.get_work_queue(), self.data_saver.get_work_queue()])
         self.flow_readers[1].set_subscribers([self.volume_calc.get_work_queue(), self.data_saver.get_work_queue()])
+        self.flow_readers[0].on_connect_failed = lambda: self.flow_connect_failed(0)
+        self.flow_readers[1].on_connect_failed = lambda: self.flow_connect_failed(1)
         self.volume_calc.start_new(on_start_args=(bidirectional_venturi_config,))
 
         self.volume_calc.new_data.connect(lambda items: (self.update_flow_plot(items), self.volumeLabel.setText("{0:.2}".format(items[-1]["data"]))))
@@ -154,10 +157,15 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.start_time = time()
         self.update_ui_state()
 
-    # def flow_reader_connect_failed(self):
-    #     print("Flow reader connect failed")
-    #     self.comboBoxFlow.setCurrentIndex(-1)
-    #     self.update_ui_state()
+    def flow_connect_failed(self, i):
+        print("Flow%d reader connect failed" % (i+1))
+        self.flow_combo_boxes[i].setCurrentIndex(-1)
+        self.update_ui_state()
+
+    def eit_connect_failed(self):
+        print("EIT reader connect failed")
+        self.comboBox.setCurrentIndex(-1)
+        self.update_ui_state()
 
     def update_ui_state(self):
         self.update_ui_reader_state()
@@ -170,12 +178,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.clear_background_button.setEnabled(False)
 
     def update_ui_reader_state(self):
-        pass
-        # if self.flow_reader.get_state() == self.flow_reader.started or \
-        #    self.eit_reader.get_state() == self.eit_reader.started:
-        #     self.startRecordingButton.setEnabled(True)
-        # else:
-        #     self.startRecordingButton.setEnabled(False)
+        if self.flow_readers[0].get_state() == Reader.started or \
+           self.flow_readers[1].get_state() == Reader.started or \
+           self.eit_reader.get_state() == Reader.started:
+            self.startRecordingButton.setEnabled(True)
+        else:
+            self.startRecordingButton.setEnabled(False)
 
     def populate_test_buttons(self):
         self.test_buttons = [TestButton(name=name, queue=self.data_saver.get_work_queue(), enabled=False) for name in test_names]
@@ -205,7 +213,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         for button in self.test_buttons:
             button.setEnabled(True)
 
-        message = "Started recording in: " #+ self.data_saver.get_filename()
+        message = "Started recording"  # +" in: " + self.data_saver.get_filename()
         Toaster.showMessage(self, message)
 
     def stop_recording(self):
