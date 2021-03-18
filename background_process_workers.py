@@ -160,8 +160,12 @@ class BidirectionalVenturiFlowCalculator(Consumer, QtCore.QObject):
         data = np.array([item["data"] for item in items])
         timestamp = np.array([item["timestamp"] for item in items])
 
-        data = (data-offsets)*multipliers
+        # Convert pressure to flow and apply calibration
+        data[np.where(data < 0)] = 0
+        data = np.power(data, 0.5)
+        data = (data*multipliers)-offsets
 
+        # Put data in correct column based on tag
         data_array = []
         for i in range(len(data)):
             row = [None] * len(set(tags))
@@ -169,13 +173,15 @@ class BidirectionalVenturiFlowCalculator(Consumer, QtCore.QObject):
             data_array.append(row)
 
         df_new = pd.DataFrame(columns=set(tags), data=data_array, index=pd.to_datetime(timestamp, unit="s"))
+
         if len(df) > 0:
-            df = df.append(df_new) # assume df_new is later than df
+            df = df.append(df_new)  # assume df_new is later than df
         else:
             df = df_new
 
-        df = df[~df.index.duplicated(keep='first')]
-        df = df.resample(config["resample"]).pad().fillna(method="pad")
+        df = df.groupby(df.index).first()
+        df = df.fillna(method="pad")
+        df = df.resample(config["resample"]).pad()
 
         window = df.last(config["buffer"])
         if "Naive Volume (L)" in df.columns and len(window) < len(df):
