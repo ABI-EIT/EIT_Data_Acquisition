@@ -320,11 +320,32 @@
        <layout class="QHBoxLayout" name="testButtonsLayout"/>
       </item>
       <item>
-       <widget class="QLabel" name="label">
-        <property name="text">
-         <string>EIT Data</string>
-        </property>
-       </widget>
+       <layout class="QHBoxLayout" name="horizontalLayout">
+        <item>
+         <widget class="QLabel" name="label">
+          <property name="text">
+           <string>EIT Data</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="FrameCountLabelLabel">
+          <property name="text">
+           <string>Frame Count:</string>
+          </property>
+          <property name="alignment">
+           <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="FrameCountCountLabel">
+          <property name="text">
+           <string>0</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
       </item>
       <item>
        <widget class="QTextEdit" name="textEdit">

@@ -133,7 +133,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         self.eit_obj = self.initialize_eit_obj(default_pickle, self.conf)
         self.eit_reader.new_data.connect(
-            lambda result: self.textEdit.append(result["data"]))
+            lambda result: (self.textEdit.append(result["data"]), self.FrameCountCountLabel.setText(str(int(self.FrameCountCountLabel.text())+1))))
         self.eit_reader.set_subscribers([self.eit_processor.get_work_queue(), self.data_saver.get_work_queue()])
         self.eit_reader.on_connect_failed = self.eit_connect_failed
 
