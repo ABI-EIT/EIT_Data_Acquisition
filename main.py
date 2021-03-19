@@ -160,12 +160,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def flow_connect_failed(self, i):
         print("Flow%d reader connect failed" % (i+1))
-        self.flow_combo_boxes[i].setCurrentIndex(-1)
+        self.flow_combo_boxes[i].setCurrentIndex(0)
         self.update_ui_state()
 
     def eit_connect_failed(self):
         print("EIT reader connect failed")
-        self.comboBox.setCurrentIndex(-1)
+        self.comboBox.setCurrentIndex(0)
         self.update_ui_state()
 
     def update_ui_state(self):
@@ -341,16 +341,25 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.flow_plot_axes.figure.canvas.draw()
 
     def populate_devices(self):
+        self.comboBox.addItems(["None"])
         self.comboBox.addItems(Reader.list_devices())
-        self.comboBox.setCurrentIndex(-1)
+        self.comboBox.setCurrentIndex(0)
+        self.comboBoxFlow1.addItems(["None"])
         self.comboBoxFlow1.addItems(Reader.list_devices())
-        self.comboBoxFlow1.setCurrentIndex(-1)
+        self.comboBoxFlow1.setCurrentIndex(0)
+        self.comboBoxFlow2.addItems(["None"])
         self.comboBoxFlow2.addItems(Reader.list_devices())
-        self.comboBoxFlow2.setCurrentIndex(-1)
+        self.comboBoxFlow2.setCurrentIndex(0)
 
     def change_eit_device(self, text):
         if text == "":
             return
+        if text == "None":
+            if self.eit_reader.get_state() == Reader.started:
+                self.eit_processor.set_stopped()
+                self.eit_reader.set_stopped()
+                self.update_ui_state()
+                return
         self.eit_processor.start_new(on_start_args=(self.eit_obj, self.conf, self.initial_background))
         self.eit_processor.new_data.connect(lambda data: self.update_eit_plot(data[0], data[1], data[2]))
 
@@ -364,6 +373,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def change_flow_device(self, text, i):
         if text == "":
             return
+        if text == "None":
+            if self.flow_readers[i].get_state() == Reader.started:
+                self.flow_readers[i].set_stopped()
+                self.update_ui_state()
+                return
         self.flow_readers[i].start_new(on_start_args=(text, flow_configuration))
         self.update_ui_state()
 

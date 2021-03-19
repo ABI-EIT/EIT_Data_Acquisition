@@ -80,6 +80,7 @@ class Reader(Producer, QtCore.QObject):
             if configuration["frame_start_char"] is not None and data[0] != configuration["frame_start_char"]:
                 return None
         except serial.SerialException as e:
+            state.value = Reader.stopped
             print(e)
             return None
         return {"tag": tag, "data": data, "timestamp": time()}
