@@ -13,6 +13,7 @@ from abi_pyeit.app.eit import *
 import time
 from background_process_workers import *
 from Toaster import Toaster
+from PyQt5.QtGui import QIcon
 
 Ui_MainWindow, QMainWindow = uic.loadUiType("layout/eit_with_dual_flow.ui")
 
@@ -370,6 +371,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 if __name__ == '__main__':
     app = QtWidgets.QApplication(sys.argv)
     main_window = MainWindow()
+    main_window.setWindowTitle("ABI EIT")
+    main_window.setWindowIcon(QIcon("layout/lung_icon.png"))
     dw = QtWidgets.QDesktopWidget()
 
     main_window.resize(dw.availableGeometry(dw).size() * 0.7)
