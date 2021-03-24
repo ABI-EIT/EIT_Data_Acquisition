@@ -49,7 +49,7 @@ spectra_data_format = {
     "separator": ",       "
 }
 flow_plot_config = {
-    "buffer": 60000,
+    "buffer": 10000,
     "slope": 1,
     "offset": 0,
     "min_range": 2
@@ -129,7 +129,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         self.comboBox.currentTextChanged.connect(self.change_eit_device)
         self.startRecordingButton.clicked.connect(
-            lambda: self.start_recording(self.dataFileSuffixTextEdit.toPlainText()))
+            lambda: self.start_recording(self.dataFileSuffixTextEdit.text()))
         self.stopRecordingButton.clicked.connect(self.stop_recording)
 
         self.eit_obj = self.initialize_eit_obj(default_pickle, self.conf)

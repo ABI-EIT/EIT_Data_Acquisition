@@ -126,10 +126,12 @@ class Producer(Worker):
                     if queue.is_ready() and not (queue.full()):
                         queue.put(result)
                 result_pipe.send(result)
+
                 # sleep until it's time to work again (if there is time)
+                sleep_time = max(0, work_timeout - (time.time() - last_worked) - 0.000001)
+                time.sleep(sleep_time)
 
         on_stop(on_start_results, state, message_pipe, *on_stopped_args)
-
 
     @staticmethod
     @abstractmethod
@@ -139,9 +141,11 @@ class Producer(Worker):
 
 
 class Consumer(Worker):
-    def __init__(self, work_timeout=100, buffer_size=1):
+    def __init__(self, work_timeout=5, buffer_size=1):
         super().__init__()
         self.work_queues = [ReadyQueue()]
+
+        # work_timeout is the time to wait between work and the timeout for queue.get
         self.work_timeout = work_timeout
         self.buffer_size = buffer_size
 
@@ -158,14 +162,23 @@ class Consumer(Worker):
 
         on_start_results = on_start(state, message_pipe, *on_start_args)
 
+        buffer = []
+
         last_worked = time.time()
         while state.value != Worker.stopped:
-            if work_queue.qsize() >= buffer_size or \
+            try:
+                # calling get and rebuffering so that we can wait and give someone else a chance to go
+                buffer.append(work_queue.get(timeout=work_timeout))
+            except Empty:
+                # if we didn't get anything, check if we should be stopped
+                continue
+
+            if len(buffer) >= buffer_size or \
                (time.time() - last_worked) >= work_timeout or \
                state.value == Worker.stop_at_queue_end:
                 last_worked = time.time()
-                items = [work_queue.get() for i in range(work_queue.qsize())]
-                results = work(items, on_start_results, state, message_pipe, *work_args)
+                results = work(buffer, on_start_results, state, message_pipe, *work_args)
+                buffer = []
                 try:
                     result_pipe.send(results)
                 except BrokenPipeError as e:
