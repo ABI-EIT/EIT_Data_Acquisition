@@ -145,40 +145,35 @@ class BidirectionalVenturiFlowCalculator(Consumer, QtCore.QObject):
         if not items:
             return None
 
-        filtered = []
-        for item in items:
-            try:
-                if item is not None and item["data"] is not None:
-                    item["data"] = float(item["data"])
-                    filtered.append(item)
-            except ValueError:
-                pass
-
-        items = filtered
-
         df = on_start_results["df"]
         config = on_start_results["config"]
 
-        tags = np.array([item["tag"] for item in items])
-        multipliers = np.array([config["{0}_multiplier".format(tag)] for tag in tags])
-        offsets = np.array([config["{0}_offset".format(tag)] for tag in tags])
+        columns = config["columns"]
 
-        data = np.array([item["data"] for item in items])
-        timestamp = np.array([item["timestamp"] for item in items])
+        times = []
+        f1 = []
+        f2 = []
+        for item in items:
+            if item is None or item["data"][0] == "#":
+                continue
+            split = item["data"].split(",")
+            if len(split) < 3:
+                continue
+            times.append(item["timestamp"])
+            f1.append(split[1])
+            f2.append(split[2])
+
+        df_new = pd.DataFrame(columns=columns,
+                              data=np.array([f1, f2]).T,
+                              index=pd.to_datetime(times, unit="s")).apply(lambda col: pd.to_numeric(col, errors="coerce"))
+
+        multipliers = np.array([config["{0}_multiplier".format(column)] for column in columns])
+        offsets = np.array([config["{0}_offset".format(column)] for column in columns])
 
         # Convert pressure to flow and apply calibration
-        data[np.where(data < 0)] = 0
-        data = np.power(data, 0.5)
-        data = (data*multipliers)-offsets
-
-        # Put data in correct column based on tag
-        data_array = []
-        for i in range(len(data)):
-            row = [None] * len(set(tags))
-            row[list(set(tags)).index(tags[i])] = data[i]
-            data_array.append(row)
-
-        df_new = pd.DataFrame(columns=set(tags), data=data_array, index=pd.to_datetime(timestamp, unit="s"))
+        df_new[df_new < 0] = 0
+        df_new = df_new.pow(0.5)
+        df_new = (df_new*multipliers)-offsets
 
         if len(df) > 0:
             df = df.append(df_new)  # assume df_new is later than df

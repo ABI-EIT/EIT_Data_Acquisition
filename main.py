@@ -27,7 +27,7 @@ spectra_configuration = {
     "encoding": "latin-1"
 }
 flow_configuration = {
-    "baud": 115200,
+    "baud": 1000000,
     "frame_start_char": None,
     "read_timeout": 10000,
     "read_termination_char": "\n",
@@ -37,7 +37,7 @@ data_saving_configuration = {
     "directory": "data/",
     "format": "%Y-%m-%dT%H_%M_eit",
     "default_suffix": "data",
-    "columns": ["Time", "Tag", "Flow1", "Flow2", "EIT"],
+    "columns": ["Time", "Tag", "Flow", "EIT"],
     "timestamp_format": "raw",
     "delimiter": ",",
     "extension": ".csv",
@@ -115,10 +115,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.plot_axes = None
         self.flow_canvas = None
         self.flow_plot_axes = None
-        self.flow_combo_boxes = [self.comboBoxFlow1, self.comboBoxFlow2]
+        self.flow_combo_box = self.comboBoxFlow1
         self.populate_devices()
         self.eit_reader = Reader(tag="EIT")
-        self.flow_readers = [Reader(tag="Flow1"), Reader(tag="Flow2")]  # Tags used for saving AND to refer to calibration in venturi config dict
+        self.flow_reader = Reader(tag="Flow") # Tags used for saving AND to refer to calibration in venturi config dict
         self.volume_calc = BidirectionalVenturiFlowCalculator(work_timeout=.5, buffer_size=1000)
         self.eit_processor = EITProcessor()
         self.data_saver = DataSaver()
@@ -141,13 +141,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.set_background_button.clicked.connect(self.set_background)
         self.clear_background_button.clicked.connect(lambda: self.eit_processor.set_background(None))
 
-        self.flow_combo_boxes[0].currentTextChanged.connect(lambda text: self.change_flow_device(text, 0))
-        self.flow_combo_boxes[1].currentTextChanged.connect(lambda text: self.change_flow_device(text, 1))
+        self.flow_combo_box.currentTextChanged.connect(lambda text: self.change_flow_device(text))
 
-        self.flow_readers[0].set_subscribers([self.volume_calc.get_work_queue(), self.data_saver.get_work_queue()])
-        self.flow_readers[1].set_subscribers([self.volume_calc.get_work_queue(), self.data_saver.get_work_queue()])
-        self.flow_readers[0].on_connect_failed = lambda: self.flow_connect_failed(0)
-        self.flow_readers[1].on_connect_failed = lambda: self.flow_connect_failed(1)
+        self.flow_reader.set_subscribers([self.volume_calc.get_work_queue(), self.data_saver.get_work_queue()])
+        self.flow_reader.on_connect_failed = lambda: self.flow_connect_failed()
         self.volume_calc.start_new(on_start_args=(bidirectional_venturi_config,))
 
         self.volume_calc.new_data.connect(lambda items: (self.update_flow_plot(items), self.volumeLabel.setText("{0:.2}".format(items[-1]["data"]))))
@@ -158,9 +155,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.start_time = time()
         self.update_ui_state()
 
-    def flow_connect_failed(self, i):
-        print("Flow%d reader connect failed" % (i+1))
-        self.flow_combo_boxes[i].setCurrentIndex(0)
+    def flow_connect_failed(self):
+        print("Flow reader connect failed")
+        self.flow_combo_box.setCurrentIndex(0)
         self.update_ui_state()
 
     def eit_connect_failed(self):
@@ -179,8 +176,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.clear_background_button.setEnabled(False)
 
     def update_ui_reader_state(self):
-        if self.flow_readers[0].get_state() == Reader.started or \
-           self.flow_readers[1].get_state() == Reader.started or \
+        if self.flow_reader.get_state() == Reader.started or \
            self.eit_reader.get_state() == Reader.started:
             self.startRecordingButton.setEnabled(True)
         else:
@@ -347,9 +343,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.comboBoxFlow1.addItems(["None"])
         self.comboBoxFlow1.addItems(Reader.list_devices())
         self.comboBoxFlow1.setCurrentIndex(0)
-        self.comboBoxFlow2.addItems(["None"])
-        self.comboBoxFlow2.addItems(Reader.list_devices())
-        self.comboBoxFlow2.setCurrentIndex(0)
 
     def change_eit_device(self, text):
         if text == "":
@@ -370,15 +363,15 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         self.update_ui_state()
 
-    def change_flow_device(self, text, i):
+    def change_flow_device(self, text):
         if text == "":
             return
         if text == "None":
-            if self.flow_readers[i].get_state() == Reader.started:
-                self.flow_readers[i].set_stopped()
+            if self.flow_reader.get_state() == Reader.started:
+                self.flow_reader.set_stopped()
                 self.update_ui_state()
                 return
-        self.flow_readers[i].start_new(on_start_args=(text, flow_configuration))
+        self.flow_reader.start_new(on_start_args=(text, flow_configuration))
         self.update_ui_state()
 
 
