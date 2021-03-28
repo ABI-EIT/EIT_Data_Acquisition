@@ -126,6 +126,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.initial_background = None
         self.color_axis = None
         self.test_buttons = []
+        self.eit_scale = (np.inf, np.NINF)  # ymin, ymax
 
         self.comboBox.currentTextChanged.connect(self.change_eit_device)
         self.startRecordingButton.clicked.connect(
@@ -152,8 +153,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         self.populate_test_buttons()
 
+        self.checkBoxScale.stateChanged.connect(lambda state: self.reset_eit_scale() if not state else None)
+
         self.start_time = time()
         self.update_ui_state()
+
+    def reset_eit_scale(self):
+        self.eit_scale = (np.inf, np.NINF)
 
     def flow_connect_failed(self):
         print("Flow reader connect failed")
@@ -268,7 +274,14 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         self.plot_axes.clear()
 
-        plot_image = self.plot_axes.tripcolor(triangulation, eit_image)
+        vmin = min(eit_image)
+        vmax = max(eit_image)
+        if self.checkBoxScale.checkState():
+            vmin = min((vmin, self.eit_scale[0]))
+            vmax = max((vmax, self.eit_scale[1]))
+            self.eit_scale = (vmin, vmax)
+
+        plot_image = self.plot_axes.tripcolor(triangulation, eit_image, vmin=vmin, vmax=vmax)
         plot_image.axes.set_aspect('equal')
 
         for i, e in enumerate(electrode_points):

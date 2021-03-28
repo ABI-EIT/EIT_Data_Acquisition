@@ -7,7 +7,7 @@ from scipy import signal
 file_name = "data/2021-03-26T11_38_eit_data_series_venturi_1.csv"
 file_name = "data/2021-03-26T11_52_eit_series_venturi_v1_validation.csv"
 
-# file_name = "data/2021-03-26T11_55_eit_series_venturi_2.csv"
+file_name = "data/2021-03-26T11_55_eit_series_venturi_2.csv"
 # file_name = "data/2021-03-26T11_56_eit_series_venturi_2_validation.csv"
 
 flow_threshold = 0.02
@@ -20,7 +20,7 @@ flow_2_offset = 0
 
 cols = ["Time", "Flow"]
 
-trigger = 0.26
+trigger = 0.4
 reference_volume = 1
 
 if __name__ == "__main__":
@@ -67,11 +67,14 @@ if __name__ == "__main__":
     # data["abs_max_filtered"] = data["abs_max_filtered"] * -1 # Multiply by -1 for flow2
     # data["Naive Volume (L)"] = data["Naive Volume (L)"] * -1
 
-    above = data["abs_max_filtered"] >= trigger
+    ax.axhline(trigger, color="red")
+    ax.axhline(-1*trigger, color="red")
+    above = data["abs_max_filtered"].abs() >= trigger
     up = np.logical_and(above == False, [*above[1:], False])
     down = np.logical_and(above == True, [*(above[1:] == False), False])
 
     change = np.logical_or(up, down)
+
     data["categories"] = np.cumsum(change)
     odd_categories = data["categories"].where(data["categories"] % 2 == 1)  # we use odd categories, because we assume flow starts close to zero
     diffs = data.groupby(odd_categories).apply(lambda group: group["Naive Volume (L)"].iloc[-1]-group["Naive Volume (L)"].iloc[0])

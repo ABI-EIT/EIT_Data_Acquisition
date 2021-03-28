@@ -74,6 +74,16 @@
            </layout>
           </item>
           <item>
+           <widget class="QCheckBox" name="checkBoxScale">
+            <property name="text">
+             <string>Autoscale over all frames</string>
+            </property>
+            <property name="tristate">
+             <bool>false</bool>
+            </property>
+           </widget>
+          </item>
+          <item>
            <widget class="QLabel" name="label_2">
             <property name="text">
              <string>EIT Plot</string>
