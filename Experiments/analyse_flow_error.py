@@ -5,22 +5,20 @@ from scipy import integrate
 from scipy import signal
 import time
 
-file_name = "data/2021-03-26T11_38_eit_data_series_venturi_1.csv"
-file_name = "data/2021-03-26T11_52_eit_series_venturi_v1_validation.csv"
+# file_name = "data/2021-03-30T10_57_eit_single_part_series_f1_calibration_redo.csv"
+# file_name = "data/2021-03-30T10_03_eit_single_part_series_f1_validation.csv"
 
-# file_name = "data/2021-03-26T11_55_eit_series_venturi_2.csv"
-file_name = "data/2021-03-26T11_56_eit_series_venturi_2_validation.csv"
-
-# file_name="data/2021-03-29T13_35_eit_single_part_series_v1.csv"
-# file_name="data/2021-03-29T13_45_eit_single_part_series_v1_verification.csv"
+# file_name = "data/2021-03-30T10_49_eit_single_part_series_f2_calibration.csv"
+file_name = "data/2021-03-30T10_50_eit_single_part_series_f2_validation.csv"
 
 flow_threshold = 0.02
-# flow_threshold = 0
-
-flow_1_multiplier = 0.1
-flow_2_multiplier = 0.1
+flow_1_multiplier = 0.09594444705
+flow_2_multiplier = 0.09768449368
 flow_1_offset = 0
 flow_2_offset = 0
+
+sensor_1_orientation = -1
+sensor_2_orientation = 1
 
 cols = ["Time", "Flow"]
 
@@ -63,8 +61,8 @@ def main():
     data.index = pd.to_datetime(data.index, unit="s")
     data = data.resample("1ms").pad()
 
-    data["Flow1 (L/s)"] = (data["Flow1"].pow(.5).fillna(0)) * flow_1_multiplier - flow_1_offset
-    data["Flow2 (L/s)"] = (data["Flow2"].pow(.5).fillna(0)) * flow_2_multiplier - flow_2_offset
+    data["Flow1 (L/s)"] = ((data["Flow1"]*sensor_1_orientation).pow(.5).fillna(0)) * flow_1_multiplier - flow_1_offset
+    data["Flow2 (L/s)"] = ((data["Flow2"]*sensor_2_orientation).pow(.5).fillna(0)) * flow_2_multiplier - flow_2_offset
 
     data["abs_max"] = data.apply(lambda row: max(row["Flow1 (L/s)"], row["Flow2 (L/s)"], key=abs), axis=1)
 
@@ -102,7 +100,7 @@ def main():
     for item in data_deltas.iteritems():
         if item[1] != np.NaN and np.abs(item[1]) >= delta_trigger:
             ax.axvline(item[0], color="red")
-            ax.axvline(data_deltas.loc[item[0]:].index[1], color="red")
+            ax.axvline(data_deltas.loc[item[0]:].index[0], color="red")
 
     data_deltas = data_deltas.dropna()
     data_deltas = data_deltas[data_deltas.abs() >= delta_trigger]

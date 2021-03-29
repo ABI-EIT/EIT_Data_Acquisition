@@ -27,7 +27,7 @@ spectra_configuration = {
     "encoding": "latin-1"
 }
 flow_configuration = {
-    "baud": 1000000,
+    "baud": 500000,
     "frame_start_char": None,
     "read_timeout": 10000,
     "read_termination_char": "\n",
