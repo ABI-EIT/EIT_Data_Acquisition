@@ -7,21 +7,45 @@ from scipy import signal
 file_name = "data/2021-03-26T11_38_eit_data_series_venturi_1.csv"
 file_name = "data/2021-03-26T11_52_eit_series_venturi_v1_validation.csv"
 
-file_name = "data/2021-03-26T11_55_eit_series_venturi_2.csv"
-# file_name = "data/2021-03-26T11_56_eit_series_venturi_2_validation.csv"
+# file_name = "data/2021-03-26T11_55_eit_series_venturi_2.csv"
+file_name = "data/2021-03-26T11_56_eit_series_venturi_2_validation.csv"
+
+# file_name="data/2021-03-29T13_35_eit_single_part_series_v1.csv"
+# file_name="data/2021-03-29T13_45_eit_single_part_series_v1_verification.csv"
 
 flow_threshold = 0.02
 # flow_threshold = 0
 
-flow_1_multiplier = 0.09847950291  # Calibrated value
-flow_2_multiplier = -0.09799102959 # Calibrated value
+flow_1_multiplier = 0.1
+flow_2_multiplier = 0.1
 flow_1_offset = 0
 flow_2_offset = 0
 
 cols = ["Time", "Flow"]
 
-trigger = 0.4
+trigger = 0.1
+delta_trigger = 0.5
 reference_volume = 1
+
+
+def delta_to_next(row, column_a, column_b, next_target=0):
+    """
+        Find change in column b
+        starting at input row
+        ending where column a is target
+    """
+    from_val = column_b.loc[row.name]
+
+    a_from_input_row = column_a.loc[row.name:].iloc[1:]  # Get column starting after input row
+
+    if not a_from_input_row.empty:
+        next_index = (a_from_input_row == next_target).idxmax()
+    else:
+        return np.NaN
+
+    next_val = column_b.loc[next_index]
+    return next_val-from_val
+
 
 if __name__ == "__main__":
     data = pd.read_csv(file_name, usecols=cols, index_col=0)
@@ -67,21 +91,17 @@ if __name__ == "__main__":
     # data["abs_max_filtered"] = data["abs_max_filtered"] * -1 # Multiply by -1 for flow2
     # data["Naive Volume (L)"] = data["Naive Volume (L)"] * -1
 
-    ax.axhline(trigger, color="red")
-    ax.axhline(-1*trigger, color="red")
-    above = data["abs_max_filtered"].abs() >= trigger
-    up = np.logical_and(above == False, [*above[1:], False])
-    down = np.logical_and(above == True, [*(above[1:] == False), False])
+    data_deltas = data[data["abs_max_filtered"] == 0].apply(lambda row: delta_to_next(row, data["abs_max_filtered"], data["Naive Volume (L)"]), axis=1)
+    for item in data_deltas.iteritems():
+        if item[1] != np.NaN and np.abs(item[1]) >= delta_trigger:
+            ax.axvline(item[0], color="red")
+            ax.axvline(data_deltas.loc[item[0]:].index[1], color="red")
 
-    change = np.logical_or(up, down)
+    data_deltas = data_deltas.dropna()
+    data_deltas = data_deltas[data_deltas.abs() >= delta_trigger]
 
-    data["categories"] = np.cumsum(change)
-    odd_categories = data["categories"].where(data["categories"] % 2 == 1)  # we use odd categories, because we assume flow starts close to zero
-    diffs = data.groupby(odd_categories).apply(lambda group: group["Naive Volume (L)"].iloc[-1]-group["Naive Volume (L)"].iloc[0])
-    diffs = diffs.values
-
-    df = pd.DataFrame(columns=["diffs"], data=diffs, index=reference_volume*list(range(1, 11)))
-    df["cumsum"] = np.cumsum(diffs)
+    df = pd.DataFrame(columns=["diffs"], data=data_deltas.values, index=reference_volume*list(range(1, 11)))
+    df["cumsum"] = np.cumsum(data_deltas.values)
     d = np.polyfit(df.index, df["cumsum"], 1)
     f = np.poly1d(d)
     df["calculated"] = f(df.index)
