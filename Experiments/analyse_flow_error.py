@@ -3,6 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy import integrate
 from scipy import signal
+import time
 
 file_name = "data/2021-03-26T11_38_eit_data_series_venturi_1.csv"
 file_name = "data/2021-03-26T11_52_eit_series_venturi_v1_validation.csv"
@@ -47,7 +48,7 @@ def delta_to_next(row, column_a, column_b, next_target=0):
     return next_val-from_val
 
 
-if __name__ == "__main__":
+def main():
     data = pd.read_csv(file_name, usecols=cols, index_col=0)
     data.index = data.index - data.index[0]
     data = data.groupby(data.index).first()  # In groups of duplicate index, for each column, find the first non na row. (This merges duplicate timestamps keeping non na cells)
@@ -91,7 +92,13 @@ if __name__ == "__main__":
     # data["abs_max_filtered"] = data["abs_max_filtered"] * -1 # Multiply by -1 for flow2
     # data["Naive Volume (L)"] = data["Naive Volume (L)"] * -1
 
-    data_deltas = data[data["abs_max_filtered"] == 0].apply(lambda row: delta_to_next(row, data["abs_max_filtered"], data["Naive Volume (L)"]), axis=1)
+    data["ups"] = np.logical_and(data["abs_max_filtered"] == 0,
+                         np.not_equal(np.append(data["abs_max_filtered"].iloc[1:].values, 0), 0))
+
+    # data_deltas = data[data["abs_max_filtered"] == 0].apply(lambda row: delta_to_next(row, data["abs_max_filtered"], data["Naive Volume (L)"]), axis=1)
+    data_deltas = data[data["ups"]].apply(
+        lambda row: delta_to_next(row, data["abs_max_filtered"], data["Naive Volume (L)"]), axis=1)
+
     for item in data_deltas.iteritems():
         if item[1] != np.NaN and np.abs(item[1]) >= delta_trigger:
             ax.axvline(item[0], color="red")
@@ -129,6 +136,9 @@ if __name__ == "__main__":
     ax.set_ylabel("Volume (L)")
 
 
+if __name__ == "__main__":
+    # start = time.time()
+    main()
+    # finish = time.time()
+    # print("Execution took {:.3f}s".format(finish-start))
     plt.show()
-
-
