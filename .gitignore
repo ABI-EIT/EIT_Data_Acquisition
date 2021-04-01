@@ -9,3 +9,5 @@ pyeit.egg-info/
 venv/
 /data
 examples/data
+
+Analysis/configuration
