@@ -5,6 +5,8 @@ import pathlib
 import pandas as pd
 import yaml
 import numpy as np
+from scipy import signal
+from scipy import integrate
 import matplotlib.pyplot as plt
 
 configuration_directory = "configuration/"
@@ -25,18 +27,118 @@ def main():
     dataset_config_filename = list(pathlib.Path(filename).parent.glob(config["dataset_config_glob"]))[0]
     dataset_config = Config(dataset_config_filename)
 
+    # Read data in
     data = pd.read_csv(filename, index_col=0, low_memory=False)
     data.index = pd.to_datetime(data.index, unit=ABI_EIT_time_unit)
     if "flow" in data.columns:
         parse_flow(data)
     data.index = data.index - data.index[0]
+
+    # Tidy data
     data = squash_and_resample(data, freq_column="Flow1")
 
-    # venturi_pressure_to_flow
-    # infer_flow_direction
-    # flow_to_volume
+    # Convert pressure to flow
+    data[["Flow1 (L/s)", "Flow2 (L/s)"]] = data[["Flow1", "Flow2"]].apply(
+        lambda column: venturi_pressure_to_flow(column, dataset_config[column.name + "_multiplier"]))
 
+    # Find flow in correct direction
+    data["Flow (L/s)"] = infer_flow_direction(data["Flow1 (L/s)"], data["Flow2 (L/s)"])
+
+    # Calculate volume
+    data["Volume (L)"] = calculate_volume(data["Flow (L/s)"])
+
+    data[["Volume (L)", "Flow (L/s)"]].plot()
+    plt.show()
     # Get ginput for each desired test if no file is found (ie. we haven't done it yet). Save in a ginput file
+
+
+def calculate_volume(flow, x="index_as_seconds", fs=1000, fc=50, flow_threshold=0.02):
+    """
+    Calculate volume from flow.
+    This function performs a cumulative trapezoidal integration after filtering and thresholding the flow data
+
+    Parameters
+    ----------
+    flow
+    fs
+    fc
+    flow_threshold
+
+    Returns
+    -------
+    volume
+
+    """
+
+    if x == "index_as_seconds":
+        x = flow.index.astype(np.int64)/10**9
+    else:
+        x = None
+
+    w = fc / (fs / 2)  # Normalize the frequency
+    b, a = signal.butter(5, w, 'low')
+    flow_filtered = signal.filtfilt(b, a, flow)
+    flow_filtered_thresholded = np.where(np.abs(flow_filtered) <= flow_threshold, 0, flow_filtered)
+    volume = integrate.cumtrapz(flow_filtered_thresholded,  x=x, initial=0)
+    return volume
+
+
+def infer_flow_direction(flow_a, flow_b):
+    """
+    A venturi flow meter measures a positive but incorrect value when flow is reversed.
+    This function assumes flow_a and flow_b are data sets from two opposing venturi tubes in series (or parallel with check valves)
+    one will be measuring correctly, and one will be measuring incorrectly.
+    Here we simply take the measurement of the highest magnitude, with the assumption that the magnitude of the measurement
+    in the reverse direction will be smaller.
+
+    Parameters
+    ----------
+    flow_a
+    flow_b
+
+    Returns
+    -------
+    max_magnitude
+
+    """
+    max_magnitude = lambda_max(np.array([flow_a, flow_b]).T, axis=1, key=np.abs)
+    return max_magnitude
+
+
+def lambda_max(arr, axis=None, key=None, keepdims=False):
+    """
+
+    See: https://stackoverflow.com/questions/61703879/in-numpy-how-to-select-elements-based-on-the-maximum-of-their-absolute-values
+
+    Parameters
+    ----------
+    arr
+    axis
+    key
+    keepdims
+
+    Returns
+    -------
+    calculated maximum
+
+    """
+    if callable(key):
+        idxs = np.argmax(key(arr), axis)
+        if axis is not None:
+            idxs = np.expand_dims(idxs, axis)
+            result = np.take_along_axis(arr, idxs, axis)
+            if not keepdims:
+                result = np.squeeze(result, axis=axis)
+            return result
+        else:
+            return arr.flatten()[idxs]
+    else:
+        return np.amax(arr, axis)
+
+
+def venturi_pressure_to_flow(pressure, multiplier, offset=0, sensor_orientation=1):
+    flow = ((pressure * sensor_orientation).pow(.5).fillna(0) * multiplier) - offset
+    return flow
 
 
 def squash_and_resample(data, freq_column=None, resample_freq="1ms", output=None):
