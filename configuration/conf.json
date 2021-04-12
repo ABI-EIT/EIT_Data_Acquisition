@@ -4,6 +4,7 @@
     "lamb": 0.4,
     "method": "kotre"
   },
+  "type": "JAC",
 
   "solve_type": "solve",
   "normalize": false

@@ -119,7 +119,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.flow_combo_box = self.comboBoxFlow1
         self.populate_devices()
         self.eit_reader = Reader(tag="EIT")
-        self.flow_reader = Reader(tag="Flow") # Tags used for saving AND to refer to calibration in venturi config dict
+        self.flow_reader = Reader(tag="Flow")  # Tags used for saving AND to refer to calibration in venturi config dict
         self.volume_calc = BidirectionalVenturiFlowCalculator(work_timeout=.5, buffer_size=1000)
         self.eit_processor = EITProcessor()
         self.data_saver = DataSaver()
@@ -128,6 +128,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.color_axis = None
         self.test_buttons = []
         self.eit_scale = (np.inf, np.NINF)  # ymin, ymax
+        self.breathe_labels = (self.inLabel, self.holdLabel1, self.outLabel, self.holdLabel2, self.restLabel)
+        self.first_breathe_label_index = 4
+        self.breathe_label_count = -1 
 
         self.comboBox.currentTextChanged.connect(self.change_eit_device)
         self.startRecordingButton.clicked.connect(
@@ -136,7 +139,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         self.eit_obj = self.initialize_eit_obj(default_pickle, self.conf)
         self.eit_reader.new_data.connect(
-            lambda result: (self.textEdit.append(result["data"]), self.FrameCountCountLabel.setText(str(int(self.FrameCountCountLabel.text())+1))))
+            lambda result: (self.textEdit.append(result["data"]),
+                            self.FrameCountCountLabel.setText(str(int(self.FrameCountCountLabel.text())+1)),
+                            self.increment_breathe_labels()))
         self.eit_reader.set_subscribers([self.eit_processor.get_work_queue(), self.data_saver.get_work_queue()])
         self.eit_reader.on_connect_failed = self.eit_connect_failed
 
@@ -156,8 +161,25 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         self.checkBoxScale.stateChanged.connect(lambda state: self.reset_eit_scale() if not state else None)
 
+        self.resetButton.clicked.connect(self.reset_breathe_labels)
+
         self.start_time = time()
         self.update_ui_state()
+
+    def update_breathe_labels(self):
+        for i, label in enumerate(self.breathe_labels):
+            if i == (self.breathe_label_count + self.first_breathe_label_index) % len(self.breathe_labels) :
+                self.breathe_labels[i].setEnabled(True)
+            else:
+                self.breathe_labels[i].setEnabled(False)
+
+    def reset_breathe_labels(self):
+        self.breathe_label_count = 0
+        self.update_breathe_labels()
+
+    def increment_breathe_labels(self):
+        self.breathe_label_count += 1
+        self.update_breathe_labels()
 
     def reset_eit_scale(self):
         self.eit_scale = (np.inf, np.NINF)
