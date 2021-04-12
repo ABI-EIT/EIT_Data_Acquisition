@@ -9,6 +9,10 @@ from scipy import signal
 from scipy import integrate
 import matplotlib.pyplot as plt
 import json
+from abi_pyeit.quality.plotting import *
+from abi_pyeit.app.eit import *
+import math
+import matplotlib.animation as animation
 
 configuration_directory = "configuration/"
 config_file = "config.yaml"
@@ -17,8 +21,21 @@ default_config = {
     "initial_dir": "",
     "dataset_config_glob": "Subject Information.yaml",
     "tests": [
-        {"name": "Test 3", "hold": "10s"}
-    ]
+        {"name": "Test 3", "hold": "10s", "analysis_max": -1}
+    ],
+    "eit_configuration": {
+        "mesh_filename": "mesh/mesha06_bumpychestslice.stl",
+        "n_electrodes": 16,
+        "dist": 3,
+        # Recon:
+        "p": 0.5,
+        "lamb": 0.4,
+        "method": "kotre",
+        # Electrode placement:
+        "chest_and_spine_ratio": 2,
+        # Analysis:
+        "image_threshold_proportion": .15
+    }
 }
 
 ABI_EIT_time_unit = "s"
@@ -34,7 +51,7 @@ def main():
     # Read data in
     data = pd.read_csv(filename, index_col=0, low_memory=False)
     data.index = pd.to_datetime(data.index, unit=ABI_EIT_time_unit)
-    if "flow" in data.columns:
+    if "Flow" in data.columns:
         parse_flow(data)
     data.index = data.index - data.index[0]
 
@@ -52,11 +69,6 @@ def main():
     # Calculate volume
     data["Volume (L)"] = calculate_volume(data["Flow (L/s)"], x="index_as_seconds")
 
-    # Plot volume with EIT frames
-    ax = data["Volume (L)"].plot()
-    ax.plot(data["Volume (L)"].where(data["EIT"].notna()).dropna(), "rx")
-    ax.set_title("Expiration volume with EIT frame times")
-
     # Construct ginput file name based on data file name
     ginput_name = pathlib.Path(pathlib.Path(filename).stem + "_ginput.json")
     ginput_path = pathlib.Path(filename).parent / ginput_name
@@ -70,11 +82,66 @@ def main():
             data_ginput.save()
 
     # Run linearity test
-    linearity_test_out = {}
+    lin_out = {}
     linearity_test(data[["Volume (L)", "EIT"]], test_config=next(test for test in config["tests"] if test["name"] == "Test 3"),
-                   test_ginput=data_ginput["Test 3"], out=linearity_test_out)
+                   test_ginput=data_ginput["Test 3"], eit_config=config["eit_configuration"], out=lin_out)
+
+
+    # Plotting ---------------------------------------------------------------------------------------------------------
+    # Plot volume with EIT frames
+    ax = data["Volume (L)"].plot()
+    ax.plot(data["Volume (L)"].where(data["EIT"].notna()).dropna(), "rx")
+    ax.set_title("Expiration volume with EIT frame times")
+
+    # Linearity test plots
+    recon_min = np.nanmin(lin_out["df"]["recon_render"].apply(np.nanmin))
+    recon_max = np.nanmax(lin_out["df"]["recon_render"].apply(np.nanmax))
+    fig, ani1 = create_animated_image_plot(lin_out["df"]["recon_render"].values, title="Reconstruction image animation", vmin=recon_min, vmax=recon_max)
+    fig, ani2 = create_animated_image_plot(lin_out["df"]["threshold_image"].values, title="Threshold image animation")
+
+    fig, ax = plt.subplots()
+    ax.plot(lin_out["df"]["Volume delta"], lin_out["df"]["reconstructed_area"], ".")
+    ax.plot(lin_out["df"]["Volume delta"], lin_out["df"]["calculated"])
 
     plt.show()
+
+
+def create_animated_image_plot(images, title, background=np.nan, margin=10, interval=500, repeat_delay=500, **kwargs):
+    """
+    Create a plot using imshow and set the axis bounds to frame the image
+
+    Parameters
+    ----------
+    image
+        Image array
+    title
+        Plot title
+    background
+        Value of the background in the image
+    margin
+        Margin to place at the sides of the image
+    origin
+        Origin parameter for imshow
+
+    Returns
+    -------
+    fig, ax
+
+    """
+    fig, ax = plt.subplots()
+    ims = [[ax.imshow(im.T, **kwargs, animated=True)] for im in images]
+    img_bounds = get_img_bounds(images[0].T, background=background)
+
+    ax.set_ybound(img_bounds[0]-margin, img_bounds[1]+margin)
+    ax.set_xbound(img_bounds[2]-margin, img_bounds[3]+margin)
+    ax.set_title(title)
+
+    fig.colorbar(ims[0][0])
+
+    ani = animation.ArtistAnimation(fig, ims, interval=interval, blit=True, repeat_delay=repeat_delay)
+
+    return fig, ani
+
 
 def get_ith(data, i):
     if len(data) > i:
@@ -82,7 +149,13 @@ def get_ith(data, i):
     else:
         return None
 
-def linearity_test(data, test_config, test_ginput, out):
+
+def linearity_test(data, test_config, test_ginput, eit_config, out=None):
+
+    if out is None:
+        out = {}
+
+    # Process time windows ---------------------------------------------------------------------------------------------
     times = pd.to_timedelta(test_ginput)
     hold = test_config["hold"]
     test_data = pd.DataFrame(columns=["In", "Out"], data=np.array([times[::2], times[1::2]]).T)
@@ -90,14 +163,85 @@ def linearity_test(data, test_config, test_ginput, out):
     test_data["In Volume"] = test_data.apply(lambda row: data["Volume (L)"].loc[row["In"]:row["In end"]].mean(), axis=1)
     test_data["Out end"] = test_data["Out"].apply(lambda row: row + hold)
     test_data["Out Volume"] = test_data.apply(lambda row: data["Volume (L)"].loc[row["Out"]:row["Out end"]].mean(), axis=1)
-    test_data["Volume delta"] = (test_data["In Volume"] - test_data["Out Volume"]).abs()
 
     # get_ith(data,1) gets the second EIT frame in the window. This ensures it is a frame completely scanned during the window
     test_data["EIT in"] = test_data.apply(lambda row: get_ith(data["EIT"].where(data["EIT"].loc[row["In"]:row["In end"]].notna()).dropna(), 1), axis=1)
     test_data["EIT out"] = test_data.apply(lambda row: get_ith(data["EIT"].where(data["EIT"].loc[row["Out"]:row["Out end"]].notna()).dropna(), 1), axis=1)
 
+    # Calculate volume deltas ------------------------------------------------------------------------------------------
+    test_data["Volume delta"] = (test_data["In Volume"] - test_data["Out Volume"]).abs()
 
-    # Process EIT now! in is baseline, out is delta
+    test_data = test_data.dropna()
+    test_data = test_data.sort_values(by="Volume delta")
+    if test_config["analysis_max"] > 0:
+        test_data = test_data[test_data["Volume delta"] <= test_config["analysis_max"]]
+
+    # Process EIT ------------------------------------------------------------------------------------------------------
+    mesh = load_stl(eit_config["mesh_filename"])
+    image = model_inverse_uv(mesh, resolution=(1000, 1000))
+    electrode_nodes = place_electrodes_equal_spacing(mesh, n_electrodes=eit_config["n_electrodes"], starting_angle=math.pi)
+
+    ex_mat = eit_scan_lines(eit_config["n_electrodes"], eit_config["dist"])
+    pyeit_obj = JAC(mesh, np.array(electrode_nodes), ex_mat, step=1, perm=1)
+    pyeit_obj.setup(p=eit_config["p"], lamb=eit_config["lamb"], method=eit_config["method"])
+
+    # Solve EIT data
+    test_data["solution"] = test_data.apply(lambda row: np.real(pyeit_obj.solve(v1=parse_oeit_line(row["EIT in"]),
+                                                                                v0=parse_oeit_line(row["EIT out"]))), axis=1)
+
+    # Render from solution (mesh + values) to nxn image
+    test_data["recon_render"] = test_data.apply(lambda row: map_image(image, np.array(row["solution"])), axis=1)
+
+    # Find the point in the rendered image with greatest magnitude (+ or -) so we can threshold on this
+    test_data["greatest_magnitude"] = test_data.apply(lambda row: lambda_max(row["recon_render"],
+                                                                             key=lambda val: np.abs(np.nan_to_num(val, nan=0))), axis=1)
+    # Find the max over all frames
+    max_all_frames = lambda_max(np.array(test_data["greatest_magnitude"]), key=np.abs)
+
+    # Create a threshold image
+    test_data["threshold_image"] = test_data.apply(lambda row: calc_absolute_threshold_set(row["recon_render"],
+                                                                                           max_all_frames*eit_config["image_threshold_proportion"]), axis=1)
+
+    # Count pixels in the threshold image
+    test_data["reconstructed_area"] = test_data.apply(lambda row: np.count_nonzero(row["threshold_image"] == 1), axis=1)
+
+    # Linear fit -------------------------------------------------------------------------------------------------------
+    d = np.polyfit(test_data["Volume delta"], test_data["reconstructed_area"], 1)
+    f = np.poly1d(d)
+    test_data["calculated"] = f(test_data["Volume delta"])
+
+    out["df"] = test_data
+
+    return test_data
+
+
+def calc_absolute_threshold_set(image, threshold):
+    """
+
+
+    Parameters
+    ----------
+    image: np.Array(width,height)
+    threshold: float
+
+    Returns
+    ---------
+    image_set: np.Array(width,height)
+    """
+
+    image_set = np.full(np.shape(image), np.nan)
+
+    if threshold < 0:
+        with np.errstate(invalid="ignore"):
+            image_set[image < threshold] = 1
+            image_set[image >= threshold] = 0
+
+    else:
+        with np.errstate(invalid="ignore"):
+            image_set[image < threshold] = 0
+            image_set[image >= threshold] = 1
+
+    return image_set
 
 
 def get_input(data, show_columns, test_name):
