@@ -7,6 +7,7 @@ import yaml
 import numpy as np
 from scipy import signal
 from scipy import integrate
+from scipy.stats import linregress
 import matplotlib.pyplot as plt
 import json
 from abi_pyeit.quality.plotting import *
@@ -20,9 +21,9 @@ config_path = configuration_directory + config_file
 default_config = {
     "initial_dir": "",
     "dataset_config_glob": "Subject Information.yaml",
-    "tests": [
-        {"name": "Test 3", "hold": "10s", "analysis_max": -1}
-    ],
+    "tests": {
+        "Test 3": {"hold": "10s", "analysis_max": -1, "normalize_volume": "VC"}
+    },
     "eit_configuration": {
         "mesh_filename": "mesh/mesha06_bumpychestslice.stl",
         "n_electrodes": 16,
@@ -76,15 +77,15 @@ def main():
 
     # Get ginput for all desired tests, either from user or from file
     for test in config["tests"]:
-        if test["name"] not in data_ginput:
+        if test not in data_ginput:
             points = get_input(data, show_columns=["Volume (L)"], test_name=test["name"])
             data_ginput[test["name"]] = [point[0] for point in points]  # save only times
             data_ginput.save()
 
     # Run linearity test
     lin_out = {}
-    linearity_test(data[["Volume (L)", "EIT"]], test_config=next(test for test in config["tests"] if test["name"] == "Test 3"),
-                   test_ginput=data_ginput["Test 3"], eit_config=config["eit_configuration"], out=lin_out)
+    linearity_test(data[["Volume (L)", "EIT"]], test_config=config["tests"]["Test 3"],
+                   test_ginput=data_ginput["Test 3"], eit_config=config["eit_configuration"], dataset_config=dataset_config, out=lin_out)
 
 
     # Plotting ---------------------------------------------------------------------------------------------------------
@@ -92,6 +93,7 @@ def main():
     ax = data["Volume (L)"].plot()
     ax.plot(data["Volume (L)"].where(data["EIT"].notna()).dropna(), "rx")
     ax.set_title("Expiration volume with EIT frame times")
+    ax.set_ylabel("Volume (L)")
 
     # Linearity test plots
     recon_min = np.nanmin(lin_out["df"]["recon_render"].apply(np.nanmin))
@@ -99,9 +101,21 @@ def main():
     fig, ani1 = create_animated_image_plot(lin_out["df"]["recon_render"].values, title="Reconstruction image animation", vmin=recon_min, vmax=recon_max)
     fig, ani2 = create_animated_image_plot(lin_out["df"]["threshold_image"].values, title="Threshold image animation")
 
+    # # Save animations
+    # writer_gif = animation.PillowWriter(fps=2, bitrate=2000)
+    # ani1.save(str(pathlib.Path(filename).parent) + "\\" + "Reconstruction image animation.gif", writer_gif, dpi=1000)
+    # ani2.save(str(pathlib.Path(filename).parent) + "\\" + "Threshold image animation.gif", writer_gif, dpi=1000)
+
     fig, ax = plt.subplots()
-    ax.plot(lin_out["df"]["Volume delta"], lin_out["df"]["reconstructed_area"], ".")
+    ax.plot(lin_out["df"]["Volume delta"], lin_out["df"]["reconstructed_area^1.5"], ".")
     ax.plot(lin_out["df"]["Volume delta"], lin_out["df"]["calculated"])
+    ax.text(0.8, 0.1, "R^2 = {0:.2}".format(lin_out["r_squared"]), transform=ax.transAxes)
+    if config["tests"]["Test 3"]["normalize_volume"] == "VC":
+        ax.set_title("Volume delta (normalized to vital capacity) \nvs EIT image area^1.5")
+        ax.set_xlabel("Volume delta normalized to vital capacity")
+        ax.set_ylabel("EIT image area (pixels)^1.5")
+        ax.figure.tight_layout(pad=1)
+
 
     plt.show()
 
@@ -150,7 +164,7 @@ def get_ith(data, i):
         return None
 
 
-def linearity_test(data, test_config, test_ginput, eit_config, out=None):
+def linearity_test(data, test_config, test_ginput, eit_config, dataset_config, out=None):
 
     if out is None:
         out = {}
@@ -175,6 +189,11 @@ def linearity_test(data, test_config, test_ginput, eit_config, out=None):
     test_data = test_data.sort_values(by="Volume delta")
     if test_config["analysis_max"] > 0:
         test_data = test_data[test_data["Volume delta"] <= test_config["analysis_max"]]
+
+    if test_config["normalize_volume"] == "VC":
+        mean_vc = np.average(dataset_config["VC"])
+        test_data["Volume delta"] = test_data["Volume delta"]/mean_vc
+
 
     # Process EIT ------------------------------------------------------------------------------------------------------
     mesh = load_stl(eit_config["mesh_filename"])
@@ -205,15 +224,25 @@ def linearity_test(data, test_config, test_ginput, eit_config, out=None):
     # Count pixels in the threshold image
     test_data["reconstructed_area"] = test_data.apply(lambda row: np.count_nonzero(row["threshold_image"] == 1), axis=1)
 
+    # Raise to power of 1.5 to obtain a linear relationship with volume
+    test_data["reconstructed_area^1.5"] = test_data["reconstructed_area"].pow(1)
+
     # Linear fit -------------------------------------------------------------------------------------------------------
-    d = np.polyfit(test_data["Volume delta"], test_data["reconstructed_area"], 1)
+    d = np.polyfit(test_data["Volume delta"], test_data["reconstructed_area^1.5"], 1)
     f = np.poly1d(d)
     test_data["calculated"] = f(test_data["Volume delta"])
+    r_squared = rsquared(test_data["calculated"], test_data["reconstructed_area^1.5"])
 
     out["df"] = test_data
+    out["r_squared"] = r_squared
 
     return test_data
 
+def rsquared(x, y):
+    """ Return R^2 where x and y are array-like."""
+
+    slope, intercept, r_value, p_value, std_err = linregress(x, y)
+    return r_value**2
 
 def calc_absolute_threshold_set(image, threshold):
     """
