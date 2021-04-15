@@ -214,12 +214,17 @@ class BidirectionalVenturiFlowCalculator(Consumer, QtCore.QObject):
         con = args[0]
         if con.poll():
             value = con.recv()
-            df = pd.DataFrame(columns=["Naive Volume (L)"], data=[value], index = [df.index[-1]])
+            # df = pd.DataFrame(columns=["Naive Volume (L)", "abs_max_filtered", config["columns"][0], config["columns"][1]], data=np.array([[value, np.nan, np.nan, np.nan]]), index = [df.index[-1]])
+            df = pd.DataFrame(
+                columns=["Naive Volume (L)", "abs_max_filtered"],
+                data=np.array([[value, np.nan]]), index=[df.index[-1]])
 
         on_start_results["df"] = df
 
-        return [{"tag": "Volume", "data": element[0], "timestamp": element[1]} for element in
-                zip(df["Naive Volume (L)"], df.index.astype(np.int64) / 10 ** 9)]
+        # return [{"tag": "Volume", "data": (element[0], element[1], element[2], element[3]), "timestamp": element[4]} for element in
+        #         zip(df["abs_max_filtered"], df["Naive Volume (L)"], df[config["columns"][0]], df[config["columns"][1]], df.index.astype(np.int64) / 10 ** 9)]
+        return [{"tag": "Volume", "data": (element[0], element[1]), "timestamp": element[2]} for element in
+                zip(df["abs_max_filtered"], df["Naive Volume (L)"], df.index.astype(np.int64) / 10 ** 9)]
 
     @staticmethod
     def on_stop(on_start_results, state, message_pipe, *args):

@@ -15,32 +15,6 @@ from abi_pyeit.app.eit import *
 import math
 import matplotlib.animation as animation
 
-configuration_directory = "configuration/"
-config_file = "config.yaml"
-config_path = configuration_directory + config_file
-default_config = {
-    "initial_dir": "",
-    "dataset_config_glob": "Subject Information.yaml",
-    "tests": {
-        "Test 3": {"hold": "10s", "analysis_max": -1, "normalize_volume": "VC"}
-    },
-    "eit_configuration": {
-        "mesh_filename": "mesh/mesha06_bumpychestslice.stl",
-        "n_electrodes": 16,
-        "dist": 3,
-        # Recon:
-        "p": 0.5,
-        "lamb": 0.4,
-        "method": "kotre",
-        # Electrode placement:
-        "chest_and_spine_ratio": 2,
-        # Analysis:
-        "image_threshold_proportion": .15
-    }
-}
-
-ABI_EIT_time_unit = "s"
-
 
 def main():
     config = Config(config_path, default_config)
@@ -92,6 +66,7 @@ def main():
     # Plot volume with EIT frames
     ax = data["Volume (L)"].plot()
     ax.plot(data["Volume (L)"].where(data["EIT"].notna()).dropna(), "rx")
+    ax.plot(data["Flow1 (L/s)"])
     ax.set_title("Expiration volume with EIT frame times")
     ax.set_ylabel("Volume (L)")
 
@@ -107,13 +82,13 @@ def main():
     # ani2.save(str(pathlib.Path(filename).parent) + "\\" + "Threshold image animation.gif", writer_gif, dpi=1000)
 
     fig, ax = plt.subplots()
-    ax.plot(lin_out["df"]["Volume delta"], lin_out["df"]["reconstructed_area^1.5"], ".")
+    ax.plot(lin_out["df"]["Volume delta"], lin_out["df"]["area^1.5_normalized"], ".")
     ax.plot(lin_out["df"]["Volume delta"], lin_out["df"]["calculated"])
-    ax.text(0.8, 0.1, "R^2 = {0:.2}".format(lin_out["r_squared"]), transform=ax.transAxes)
+    ax.text(0.8, 0.1, "R^2 = {0:.4}".format(lin_out["r_squared"]), transform=ax.transAxes)
     if config["tests"]["Test 3"]["normalize_volume"] == "VC":
         ax.set_title("Volume delta (normalized to vital capacity) \nvs EIT image area^1.5")
         ax.set_xlabel("Volume delta normalized to vital capacity")
-        ax.set_ylabel("EIT image area (pixels)^1.5")
+        ax.set_ylabel("EIT image area (pixels)^1.5/max_pixels^1.5")
         ax.figure.tight_layout(pad=1)
 
 
@@ -187,12 +162,13 @@ def linearity_test(data, test_config, test_ginput, eit_config, dataset_config, o
 
     test_data = test_data.dropna()
     test_data = test_data.sort_values(by="Volume delta")
-    if test_config["analysis_max"] > 0:
-        test_data = test_data[test_data["Volume delta"] <= test_config["analysis_max"]]
 
     if test_config["normalize_volume"] == "VC":
         mean_vc = np.average(dataset_config["VC"])
         test_data["Volume delta"] = test_data["Volume delta"]/mean_vc
+
+    if test_config["analysis_max"] > 0:
+        test_data = test_data[test_data["Volume delta"] <= test_config["analysis_max"]]
 
 
     # Process EIT ------------------------------------------------------------------------------------------------------
@@ -224,14 +200,18 @@ def linearity_test(data, test_config, test_ginput, eit_config, dataset_config, o
     # Count pixels in the threshold image
     test_data["reconstructed_area"] = test_data.apply(lambda row: np.count_nonzero(row["threshold_image"] == 1), axis=1)
 
+    max_pixels = np.sum(np.isfinite(test_data["threshold_image"].iloc[0]))
+
     # Raise to power of 1.5 to obtain a linear relationship with volume
-    test_data["reconstructed_area^1.5"] = test_data["reconstructed_area"].pow(1)
+    test_data["reconstructed_area^1.5"] = test_data["reconstructed_area"].pow(1.5)
+
+    test_data["area^1.5_normalized"] = test_data["reconstructed_area^1.5"]/max_pixels**1.5
 
     # Linear fit -------------------------------------------------------------------------------------------------------
-    d = np.polyfit(test_data["Volume delta"], test_data["reconstructed_area^1.5"], 1)
+    d = np.polyfit(test_data["Volume delta"], test_data["area^1.5_normalized"], 1)
     f = np.poly1d(d)
     test_data["calculated"] = f(test_data["Volume delta"])
-    r_squared = rsquared(test_data["calculated"], test_data["reconstructed_area^1.5"])
+    r_squared = rsquared(test_data["calculated"], test_data["area^1.5_normalized"])
 
     out["df"] = test_data
     out["r_squared"] = r_squared
@@ -514,6 +494,33 @@ class Config:
         return item in self.config
 
 
+# Default configurations -----------------------------------------------------
+# Don't change these to configure a single test! Change settings in the config file!
+configuration_directory = "configuration/"
+config_file = "config.yaml"
+config_path = configuration_directory + config_file
+default_config = {
+    "initial_dir": "",
+    "dataset_config_glob": "Subject Information.yaml",
+    "tests": {
+        "Test 3": {"hold": "10s", "analysis_max": -1, "normalize_volume": "VC"}
+    },
+    "eit_configuration": {
+        "mesh_filename": "mesh/mesha06_bumpychestslice.stl",
+        "n_electrodes": 16,
+        "dist": 3,
+        # Recon:
+        "p": 0.5,
+        "lamb": 0.4,
+        "method": "kotre",
+        # Electrode placement:
+        "chest_and_spine_ratio": 2,
+        # Analysis:
+        "image_threshold_proportion": .15
+    }
+}
+
+ABI_EIT_time_unit = "s"
+
 if __name__ == "__main__":
     main()
-

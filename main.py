@@ -154,7 +154,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.flow_reader.on_connect_failed = lambda: self.flow_connect_failed()
         self.volume_calc.start_new(on_start_args=(bidirectional_venturi_config,))
 
-        self.volume_calc.new_data.connect(lambda items: (self.update_flow_plot(items), self.volumeLabel.setText("{0:.2}".format(items[-1]["data"]))))
+        self.volume_calc.new_data.connect(lambda items: (self.update_flow_plot(items), self.volumeLabel.setText("{0:.2}".format(items[-1]["data"][0]))))
         self.zeroVolumeButton.clicked.connect(self.volume_calc.set_zero)
 
         self.populate_test_buttons()
@@ -328,7 +328,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         time_list = []
         for item in items:
             try:
-                data = float(item["data"])
+                data = float(item["data"][1])
                 time = float(item["timestamp"]) - float(self.start_time)
             except ValueError:
                 continue
