@@ -174,7 +174,7 @@ class BidirectionalVenturiFlowCalculator(Consumer, QtCore.QObject):
         df_new = df_new*config["sensor_orientations"]
         df_new[df_new < 0] = 0
         df_new = df_new.pow(0.5)
-        df_new = ((df_new*multipliers)-offsets)
+        df_new = ((df_new-offsets)*multipliers)
 
         if len(df) > 0:
             df = df.append(df_new)  # assume df_new is later than df

@@ -66,7 +66,7 @@ def main():
     # Plot volume with EIT frames
     ax = data["Volume (L)"].plot()
     ax.plot(data["Volume (L)"].where(data["EIT"].notna()).dropna(), "rx")
-    ax.plot(data["Flow1 (L/s)"])
+    # ax.plot(data["Flow1 (L/s)"])
     ax.set_title("Expiration volume with EIT frame times")
     ax.set_ylabel("Volume (L)")
 
@@ -361,7 +361,7 @@ def lambda_max(arr, axis=None, key=None, keepdims=False):
 
 
 def venturi_pressure_to_flow(pressure, multiplier, offset=0, sensor_orientation=1):
-    flow = ((pressure * sensor_orientation).pow(.5).fillna(0) * multiplier) - offset
+    flow = ((pressure * sensor_orientation).pow(.5).fillna(0) - offset) * multiplier
     return flow
 
 

@@ -25,7 +25,7 @@ flow_configuration = {
 }
 data_saving_configuration = {
     "directory": "data/",
-    "format": "%Y-%m-%dT%H_%M_eit",
+    "format": "%Y-%m-%dT%H_%M_flow",
     "default_suffix": "data",
     "columns": ["Time", "Tag", "Flow"],
     "timestamp_format": "raw",
@@ -45,13 +45,13 @@ flow_plot_config = {
 bidirectional_venturi_config = {
     "columns": ["Flow1", "Flow2"],
     "sensor_orientations": [-1, 1],  # Orientation of pressure sensor. 1 for positive reading from air flow through venturi tube
-    # "Flow1_multiplier": 0.09302907076,  # V1 calibration, V1 is flow out
-    # "Flow2_multiplier": -0.09372544465,  # V2 calibration, V2 is flow in
-    "Flow1_multiplier": 1,
-    "Flow2_multiplier": 0,
-    "Flow1_offset": 0,
+    # "Flow1_multiplier": 0.09885543577,
+    "Flow1_multiplier": 0,
+    "Flow2_multiplier": -1,
+    # "Flow1_offset": 0.16,
+    "Flow1_offset": 0.16,
     "Flow2_offset": 0,
-    "flow_threshold": 0.0,
+    "flow_threshold": 0.02,
     "sampling_freq": 1000,
     "cutoff_freq": 50,
     "order": 5,
@@ -114,7 +114,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.startRecordingButton.setVisible(True)
 
         self.comboBoxFlow1.setEnabled(True)
-        self.comboBoxFlow2.setEnabled(True)
         self.dataFileSuffixTextEdit.setEnabled(True)
 
         self.data_saver.set_stop_at_queue_end()

@@ -9,13 +9,21 @@ import time
 # file_name = "data/2021-03-30T10_03_eit_single_part_series_f1_validation.csv"
 
 # file_name = "data/2021-03-30T10_49_eit_single_part_series_f2_calibration.csv"
-file_name = "data/2021-03-30T10_50_eit_single_part_series_f2_validation.csv"
+# file_name = "data/2021-03-30T10_50_eit_single_part_series_f2_validation.csv"
+# file_name = "data/2021-04-16T11_33_flow_f1_calibration.csv"
+file_name = "data/2021-04-16T11_40_flow_f1_verification.csv"
+# file_name = "data/2021-04-16T13_18_flow_f2_calibration.csv"
+# file_name = "data/2021-04-16T13_20_flow_f2_verification.csv"
 
-flow_threshold = 0.02
-flow_1_multiplier = 0.09594444705
-flow_2_multiplier = 0.09768449368
-flow_1_offset = 0
-flow_2_offset = 0
+flow_threshold = 0.01
+flow_1_multiplier = 0.09885543577  # calibration with .16 offset
+# flow_1_multiplier = 0.09601497396  # calibration with 0 offset
+# flow_2_multiplier = 0.09941482723  # calibration with 0 offset
+flow_2_multiplier = 0.09990606107  # calibration with 0.03 offset
+flow_1_offset = 0.16
+# flow_1_offset = 0.0
+flow_2_offset = 0.03
+# flow_2_offset = 0.0
 
 sensor_1_orientation = -1
 sensor_2_orientation = 1
@@ -61,8 +69,8 @@ def main():
     data.index = pd.to_datetime(data.index, unit="s")
     data = data.resample("1ms").pad()
 
-    data["Flow1 (L/s)"] = ((data["Flow1"]*sensor_1_orientation).pow(.5).fillna(0)) * flow_1_multiplier - flow_1_offset
-    data["Flow2 (L/s)"] = ((data["Flow2"]*sensor_2_orientation).pow(.5).fillna(0)) * flow_2_multiplier - flow_2_offset
+    data["Flow1 (L/s)"] = (((data["Flow1"]*sensor_1_orientation).pow(.5).fillna(0)) - flow_1_offset) * flow_1_multiplier
+    data["Flow2 (L/s)"] = (((data["Flow2"]*sensor_2_orientation).pow(.5).fillna(0)) - flow_2_offset) * flow_2_multiplier
 
     data["abs_max"] = data.apply(lambda row: max(row["Flow1 (L/s)"], row["Flow2 (L/s)"], key=abs), axis=1)
 
@@ -72,7 +80,7 @@ def main():
     b, a = signal.butter(5, w, 'low')
     data["abs_max_filtered"] = signal.filtfilt(b, a, data["abs_max"])
 
-    data["abs_max_filtered"].mask(data["abs_max_filtered"].abs() <= flow_threshold, 0, inplace=True)
+    data["abs_max_filtered"].mask(data["abs_max_filtered"].abs() < flow_threshold, 0, inplace=True)
 
     data["Naive Volume (L)"] = integrate.cumtrapz(data["abs_max_filtered"], x=data.index.astype(np.int64)/10**9, initial=0)
 
