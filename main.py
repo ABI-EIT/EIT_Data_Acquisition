@@ -154,7 +154,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.flow_reader.on_connect_failed = lambda: self.flow_connect_failed()
         self.volume_calc.start_new(on_start_args=(bidirectional_venturi_config,))
 
-        self.volume_calc.new_data.connect(lambda items: (self.update_flow_plot(items), self.volumeLabel.setText("{0:.2}".format(items[-1]["data"][0]))))
+        self.volume_calc.new_data.connect(lambda items: (self.update_flow_plot(items), self.volumeLabel.setText("{0:.2}".format(items[-1]["data"][1]))))
         self.zeroVolumeButton.clicked.connect(self.volume_calc.set_zero)
 
         self.populate_test_buttons()
@@ -234,7 +234,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         self.comboBox.setEnabled(False)
         self.comboBoxFlow1.setEnabled(False)
-        self.comboBoxFlow2.setEnabled(False)
         self.dataFileSuffixTextEdit.setEnabled(False)
         for button in self.test_buttons:
             button.setEnabled(True)
@@ -248,7 +247,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         self.comboBox.setEnabled(True)
         self.comboBoxFlow1.setEnabled(True)
-        self.comboBoxFlow2.setEnabled(True)
         self.dataFileSuffixTextEdit.setEnabled(True)
 
         for button in self.test_buttons:

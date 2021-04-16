@@ -391,24 +391,17 @@
            </widget>
           </item>
           <item>
-           <widget class="QLabel" name="label_22">
-            <property name="text">
-             <string>Flow 2</string>
+           <spacer name="verticalSpacer_2">
+            <property name="orientation">
+             <enum>Qt::Vertical</enum>
             </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QComboBox" name="comboBoxFlow2">
-            <property name="sizePolicy">
-             <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
-              <horstretch>0</horstretch>
-              <verstretch>0</verstretch>
-             </sizepolicy>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>20</width>
+              <height>10</height>
+             </size>
             </property>
-            <property name="currentText">
-             <string/>
-            </property>
-           </widget>
+           </spacer>
           </item>
          </layout>
         </item>

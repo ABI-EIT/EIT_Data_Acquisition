@@ -36,6 +36,7 @@ def main():
     # Convert pressure to flow
     data[["Flow1 (L/s)", "Flow2 (L/s)"]] = data[["Flow1", "Flow2"]].apply(
         lambda column: venturi_pressure_to_flow(column, multiplier=dataset_config[column.name + "_multiplier"],
+                                                offset=dataset_config[column.name + "_offset"],
                                                 sensor_orientation=dataset_config[column.name + "_sensor_orientation"]))
 
     # Find flow in correct direction
@@ -52,8 +53,8 @@ def main():
     # Get ginput for all desired tests, either from user or from file
     for test in config["tests"]:
         if test not in data_ginput:
-            points = get_input(data, show_columns=["Volume (L)"], test_name=test["name"])
-            data_ginput[test["name"]] = [point[0] for point in points]  # save only times
+            points = get_input(data, show_columns=["Volume (L)"], test_name=test)
+            data_ginput[test] = [point[0] for point in points]  # save only times
             data_ginput.save()
 
     # Run linearity test

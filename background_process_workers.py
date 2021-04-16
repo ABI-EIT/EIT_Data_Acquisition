@@ -211,6 +211,7 @@ class BidirectionalVenturiFlowCalculator(Consumer, QtCore.QObject):
         df["Naive Volume (L)"] = integrate.cumtrapz(df["abs_max_filtered"], x=df.index.astype(np.int64) / 10 ** 9,
                                                     initial=0) + vol_leaving_window
 
+        # Check for message from main thread indicating command to reset integration
         con = args[0]
         if con.poll():
             value = con.recv()
