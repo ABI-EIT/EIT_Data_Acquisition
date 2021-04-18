@@ -13,6 +13,9 @@ from abi_pyeit.app.eit import *
 import time
 from background_process_workers import *
 from Toaster import Toaster
+from functools import wraps
+from time import time
+from matplotlib import animation
 
 Ui_MainWindow, QMainWindow = uic.loadUiType("layout/layout_dual_venturi.ui")
 
@@ -45,33 +48,43 @@ flow_plot_config = {
 bidirectional_venturi_config = {
     "columns": ["Flow1", "Flow2"],
     "sensor_orientations": [-1, 1],  # Orientation of pressure sensor. 1 for positive reading from air flow through venturi tube
-    # "Flow1_multiplier": 0.09885543577,
-    "Flow1_multiplier": 0,
-    "Flow2_multiplier": -1,
-    # "Flow1_offset": 0.16,
+    "Flow1_multiplier": 0.09885543577,
+    "Flow2_multiplier": -0.09990606107,
     "Flow1_offset": 0.16,
-    "Flow2_offset": 0,
+    "Flow2_offset": 0.03,
     "flow_threshold": 0.02,
     "sampling_freq": 1000,
     "cutoff_freq": 50,
     "order": 5,
-    "buffer": "10s",
+    "buffer": "1s",
     "resample": "1ms"
 }
+
+
+def measure(func):
+    @wraps(func)
+    def _time_it(*args, **kwargs):
+        start = int(round(time() * 1000))
+        try:
+            return func(*args, **kwargs)
+        finally:
+            end_ = int(round(time() * 1000)) - start
+            print(f"Function {func.__name__} execution time: {end_ if end_ > 0 else 0} ms")
+    return _time_it
 
 
 class MainWindow(QMainWindow, Ui_MainWindow):
     def __init__(self):
         super(MainWindow, self).__init__()
-        self.first_flow_plots = [True, True, True, True]
         self.setupUi(self)
-        self.flow_canvases = [None, None, None, None]
         self.flow_plot_axes = [None, None, None, None]
+        self.ani = [None, None, None, None]
+        self.flow_plot_data = [{"data": [0], "times":[0]}, {"data": [0], "times":[0]}, {"data": [0], "times":[0]}, {"data": [0], "times":[0]}]
         self.vertical_layouts = [self.verticalLayoutFlow, self.verticalLayoutVolume, self.verticalLayoutUniFlow1, self.verticalLayoutUniFlow2]
         self.placeholder_widgets = [self.placeholderWidgetFlow1, self.placeholderWidgetVolume, self.placeholderWidgetUniFlow1, self.placeholderWidgetUniFlow2]
         self.flow_combo_box = self.comboBoxFlow1
         self.flow_reader = Reader(tag="Flow")  # Tags used for saving AND to refer to calibration in venturi config dict
-        self.volume_calc = BidirectionalVenturiFlowCalculator(work_timeout=.5, buffer_size=1000)
+        self.volume_calc = BidirectionalVenturiFlowCalculator(work_timeout=.1, buffer_size=1000)
         self.data_saver = DataSaver()
 
         self.populate_devices()
@@ -85,12 +98,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.flow_reader.set_subscribers([self.volume_calc.get_work_queue(), self.data_saver.get_work_queue()])
         self.volume_calc.start_new(on_start_args=(bidirectional_venturi_config,))
 
-        # self.volume_calc.new_data.connect(lambda items: (self.update_flow_plot(items, 0), self.update_flow_plot(items, 1),
-        #                                                  self.flowLabel.setText("{0:.2}".format(np.average([item["data"][0] for item in items]))), self.volumeLabel.setText("{0:.2}".format(items[-1]["data"][1])),
-        #                                                  self.update_flow_plot(items, 2), self.update_flow_plot(items, 3),
-        #                                                  self.uniFlowLabel1.setText("{0:.2}".format(np.average([item["data"][2] for item in items]))),self.uniFlowLabel1.setText("{0:.2}".format(np.average([item["data"][3] for item in items])))
-        #                                                  ))
-        self.volume_calc.new_data.connect(lambda items: (self.update_flow_plot(items, 0), self.update_flow_plot(items, 1),
+        self.volume_calc.new_data.connect(lambda items: (self.update_flow_plot_data(items, 0), self.update_flow_plot_data(items, 1),
                                                          self.flowLabel.setText("{0:.2}".format(np.average([item["data"][0] for item in items]))), self.volumeLabel.setText("{0:.2}".format(items[-1]["data"][1]))))
         self.zeroVolumeButton.clicked.connect(self.volume_calc.set_zero)
 
@@ -122,11 +130,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def add_flow_plot(self, i):
         self.placeholder_widgets[i].setVisible(False)
 
-        self.flow_canvases[i] = FigureCanvas(matplotlib.figure.Figure())
-        self.flow_plot_axes[i] = self.flow_canvases[i].figure.subplots()
-        toolbar = NavigationToolbar(self.flow_canvases[i], self.flow_canvases[i], coordinates=True)
+        flow_canvas = FigureCanvas(matplotlib.figure.Figure())
+        self.flow_plot_axes[i] = flow_canvas.figure.subplots()
+        toolbar = NavigationToolbar(flow_canvas, flow_canvas, coordinates=True)
 
-        self.vertical_layouts[i].addWidget(self.flow_canvases[i])
+        self.vertical_layouts[i].addWidget(flow_canvas)
         self.vertical_layouts[i].addWidget(toolbar)
 
     def parse_flow_data(self, items, i):
@@ -145,24 +153,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         data_list = np.add(data_list, flow_plot_config["offset"])
         return data_list, time_list
 
-    def update_flow_plot(self, items, i):
+    def update_flow_plot_data(self, items, i):
         new_data, new_times = self.parse_flow_data(items, i)
-
-        if self.first_flow_plots[i]:
-            self.add_flow_plot(i)
-            self.first_flow_plots[i] = False
-            data = [0]
-            times = [0]
-        else:
-            data = self.flow_plot_axes[i].lines[0].get_ydata()
-            times = self.flow_plot_axes[i].lines[0].get_xdata()
-
-        nd = [element for i, element in enumerate(new_data) if new_times[i] > times[-1]]
-        nt = [element for i, element in enumerate(new_times) if new_times[i] > times[-1]]
-        new_data = nd
-        new_times = nt
-
-        self.flow_plot_axes[i].clear()
+        data = self.flow_plot_data[i]["data"],
+        times = self.flow_plot_data[i]["times"]
+        new_data = [element for i, element in enumerate(new_data) if new_times[i] > times[-1]]
+        new_times = [element for i, element in enumerate(new_times) if new_times[i] > times[-1]]
 
         data = np.append(data, new_data)
         data = data[-1 * flow_plot_config["buffer"]:]
@@ -170,14 +166,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         times = np.append(times, new_times)
         times = times[-1 * flow_plot_config["buffer"]:]
 
-        self.flow_plot_axes[i].plot(times, data)
-        ylim = self.flow_plot_axes[i].get_ylim()
-        range = ylim[1] - ylim[0]
-        range_min = flow_plot_config["min_range"]
-        if range < range_min:
-            self.flow_plot_axes[i].set_ylim((ylim[0]-((range_min-range)/2)), ylim[1]+((range_min-range)/2))
-
-        self.flow_plot_axes[i].figure.canvas.draw()
+        self.flow_plot_data[i]["data"] = data
+        self.flow_plot_data[i]["times"] = times
 
     def populate_devices(self):
         self.flow_combo_box.addItems(self.flow_reader.list_devices())
@@ -186,13 +176,33 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def change_flow_device(self, text):
         self.flow_reader.start_new(on_start_args=(text, flow_configuration))
 
+        for i, axes in enumerate(self.flow_plot_axes):
+            if axes is None:
+                self.add_flow_plot(i)
+                self.ani[i] = animation.FuncAnimation(self.flow_plot_axes[i].figure, update_flow_plot,
+                                                      fargs=(self, i, self.flow_plot_axes[i]), interval=50, blit=True)
+
+
+def update_flow_plot(i, main_window, plot_num, axes):
+    axes.clear()
+
+    data_dict = main_window.flow_plot_data[plot_num]
+    data = data_dict["data"]
+    times = data_dict["times"]
+
+    line = axes.plot(times, data)
+    ylim = axes.get_ylim()
+    range = ylim[1] - ylim[0]
+    range_min = flow_plot_config["min_range"]
+    if range < range_min:
+        axes.set_ylim((ylim[0]-((range_min-range)/2)), ylim[1]+((range_min-range)/2))
+
+    return line
 
 if __name__ == '__main__':
     app = QtWidgets.QApplication(sys.argv)
     main_window = MainWindow()
     dw = QtWidgets.QDesktopWidget()
-
-    # main_window.resize(dw.availableGeometry(dw).size() * 0.7)
 
     main_window.show()
     app.exec()

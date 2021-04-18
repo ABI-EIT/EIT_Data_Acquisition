@@ -168,6 +168,7 @@ class Consumer(Worker):
         while state.value != Worker.stopped:
             try:
                 # calling get and rebuffering so that we can wait and give someone else a chance to go
+                # print(work_queue.qsize())
                 buffer.append(work_queue.get(timeout=work_timeout))
             except Empty:
                 # if we didn't get anything, check if we should be stopped

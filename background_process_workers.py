@@ -160,8 +160,14 @@ class BidirectionalVenturiFlowCalculator(Consumer, QtCore.QObject):
             if len(split) < 3:
                 continue
             times.append(item["timestamp"])
-            f1.append(split[1])
-            f2.append(split[2])
+            try:
+                f1.append(np.float(split[1]))
+                f2.append(np.float(split[2]))
+            except ValueError:
+                continue
+
+        if f1 == [] or f2 == []:
+            return None
 
         df_new = pd.DataFrame(columns=columns,
                               data=np.array([f1, f2]).T,
@@ -176,40 +182,36 @@ class BidirectionalVenturiFlowCalculator(Consumer, QtCore.QObject):
         df_new = df_new.pow(0.5)
         df_new = ((df_new-offsets)*multipliers)
 
-        if len(df) > 0:
-            df = df.append(df_new)  # assume df_new is later than df
-        else:
-            df = df_new
+        df_new = df_new.groupby(df_new.index).first()
+        df_new = df_new.fillna(method="pad")
+        df_new = df_new.resample(config["resample"]).pad()
 
-        df = df.groupby(df.index).first()
-        df = df.fillna(method="pad")
-        df = df.resample(config["resample"]).pad()
-
-        window = df.last(config["buffer"])
-        if "Naive Volume (L)" in df.columns and len(window) < len(df):
-            vol_leaving_window = df["Naive Volume (L)"].loc[window.index[0]-1*df.index.freq]
-        else:
-            vol_leaving_window = 0
-        df = window # select last n seconds
-        if df.empty:
-            return None
-
-        df["abs_max"] = df.fillna(0).apply(lambda row: max([row[col] for col in list(set(config["columns"]).intersection(df.columns))], key=abs), axis=1)
+        df_new["abs_max"] = df_new.fillna(0).apply(lambda row: max([row[col] for col in list(set(config["columns"]).intersection(df_new.columns))], key=abs), axis=1)
 
         fs = config["sampling_freq"]
         fc = config["cutoff_freq"]  # Cut-off frequency of the filter
         w = fc / (fs / 2)  # Normalize the frequency
         b, a = signal.butter(config["order"], w, 'low')
         pad_len = 3 * max(len(a), len(b)) # default filtfilt pad len
-        if len(df["abs_max"]) < pad_len:
+        if len(df_new["abs_max"]) < pad_len:
             return None
-        df["abs_max_filtered"] = signal.filtfilt(b, a, df["abs_max"].fillna(0))
+        df_new["abs_max_filtered"] = signal.filtfilt(b, a, df_new["abs_max"].fillna(0))
         # df["abs_max_filtered"] = df["abs_max"].dropna()
 
-        df["abs_max_filtered"].mask(df["abs_max_filtered"].abs() <= config["flow_threshold"], 0, inplace=True)
+        df_new["abs_max_filtered"].mask(df_new["abs_max_filtered"].abs() <= config["flow_threshold"], 0, inplace=True)
 
-        df["Naive Volume (L)"] = integrate.cumtrapz(df["abs_max_filtered"], x=df.index.astype(np.int64) / 10 ** 9,
-                                                    initial=0) + vol_leaving_window
+        df_new["Naive Volume (L)"] = integrate.cumtrapz(df_new["abs_max_filtered"], x=df_new.index.astype(np.int64) / 10 ** 9,
+                                                    initial=0)
+
+        if len(df) > 0:
+            df_new["Naive Volume (L)"] = df_new["Naive Volume (L)"] + df["Naive Volume (L)"].iloc[-1]
+            df = df.append(df_new)  # assume df_new is later than df
+        else:
+            df = df_new
+
+        df = df.last(config["buffer"])
+        if df.empty:
+            return None
 
         # Check for message from main thread indicating command to reset integration
         con = args[0]
