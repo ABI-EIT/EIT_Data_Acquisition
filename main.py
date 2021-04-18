@@ -58,8 +58,8 @@ flow_plot_config = {
 bidirectional_venturi_config = {
     "columns": ["Flow1", "Flow2"],
     "sensor_orientations": [-1, 1],  # Orientation of pressure sensor. 1 for positive reading from air flow through venturi tube
-    "Flow1_multiplier": 0.09885543577,  # V1 calibration, V1 is flow out
-    "Flow2_multiplier": -0.09990606107,  # V2 calibration, V2 is flow in
+    "Flow1_multiplier": 0.09880230116,
+    "Flow2_multiplier": -0.09683147461,
     "Flow1_offset": 0.16,
     "Flow2_offset": 0.03,
     "flow_threshold": 0.02,
