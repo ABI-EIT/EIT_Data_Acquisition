@@ -5,25 +5,16 @@ from scipy import integrate
 from scipy import signal
 import time
 
-# file_name = "data/2021-03-30T10_57_eit_single_part_series_f1_calibration_redo.csv"
-# file_name = "data/2021-03-30T10_03_eit_single_part_series_f1_validation.csv"
-
-# file_name = "data/2021-03-30T10_49_eit_single_part_series_f2_calibration.csv"
-# file_name = "data/2021-03-30T10_50_eit_single_part_series_f2_validation.csv"
-# file_name = "data/2021-04-16T11_33_flow_f1_calibration.csv"
-file_name = "data/2021-04-16T11_40_flow_f1_verification.csv"
-# file_name = "data/2021-04-16T13_18_flow_f2_calibration.csv"
-# file_name = "data/2021-04-16T13_20_flow_f2_verification.csv"
-
+# file_name = "data/2021-04-19T11_19_flow_shorter_venturi_f1_calibration.csv"
+file_name = "data/2021-04-19T11_20_flow_shorter_venturi_f1_verification.csv"
+# file_name = "data/2021-04-19T11_21_flow_shorter_venturi_f2_calibration.csv"
+# file_name = "data/2021-04-19T11_22_flow_shorter_venturi_f2_verification.csv"
+#
 flow_threshold = 0.01
-flow_1_multiplier = 0.09885543577  # calibration with .16 offset
-# flow_1_multiplier = 0.09601497396  # calibration with 0 offset
-# flow_2_multiplier = 0.09941482723  # calibration with 0 offset
-flow_2_multiplier = 0.09990606107  # calibration with 0.03 offset
+flow_1_multiplier = 0.09880230116
+flow_2_multiplier = -0.09683147461
 flow_1_offset = 0.16
-# flow_1_offset = 0.0
 flow_2_offset = 0.03
-# flow_2_offset = 0.0
 
 sensor_1_orientation = -1
 sensor_2_orientation = 1
@@ -113,7 +104,7 @@ def main():
     data_deltas = data_deltas.dropna()
     data_deltas = data_deltas[data_deltas.abs() >= delta_trigger]
 
-    df = pd.DataFrame(columns=["diffs"], data=data_deltas.values, index=reference_volume*list(range(1, 11)))
+    df = pd.DataFrame(columns=["diffs"], data=data_deltas.values, index=reference_volume*np.array(range(1, 11)))
     df["cumsum"] = np.cumsum(data_deltas.values)
     d = np.polyfit(df.index, df["cumsum"], 1)
     f = np.poly1d(d)
@@ -126,7 +117,7 @@ def main():
     print("Slope: " + str(f[1]))
     df["resid"] = df["calculated"]-df["cumsum"]
     max_resid = df["resid"].abs().max()
-    full_scale = df.index.max()
+    full_scale = np.abs(df.index).max()
     print("Max residual: %.2f%% of full scale" % ((max_resid/full_scale)*100))
     df["error_unadjusted"] = df["cumsum"]-df.index
     max_unadj = df["error_unadjusted"].abs().max()
