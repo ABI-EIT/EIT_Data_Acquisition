@@ -66,7 +66,7 @@ bidirectional_venturi_config = {
     "sampling_freq": 1000,
     "cutoff_freq": 50,
     "order": 5,
-    "buffer": "10s",
+    "buffer": "1s",
     "resample": "1ms"
 }
 

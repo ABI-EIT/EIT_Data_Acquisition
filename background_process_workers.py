@@ -159,12 +159,13 @@ class BidirectionalVenturiFlowCalculator(Consumer, QtCore.QObject):
             split = item["data"].split(",")
             if len(split) < 3:
                 continue
-            times.append(item["timestamp"])
             try:
                 f1.append(np.float(split[1]))
                 f2.append(np.float(split[2]))
             except ValueError:
                 continue
+            finally:
+                times.append(item["timestamp"])
 
         if f1 == [] or f2 == []:
             return None
@@ -239,6 +240,7 @@ class BidirectionalVenturiFlowCalculator(Consumer, QtCore.QObject):
 
     def set_zero(self):
         self.con1.send(0.0)
+
 
 
 class EITProcessor(Consumer, QtCore.QObject):
