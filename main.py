@@ -56,20 +56,17 @@ flow_plot_config = {
 }
 
 bidirectional_venturi_config = {
-    "columns": ["Flow1", "Flow2"],
-    "sensor_orientations": [-1, 1],  # Orientation of pressure sensor. 1 for positive reading from air flow through venturi tube
-    "Flow1_multiplier": 0.09880230116,
-    "Flow2_multiplier": -0.09683147461,
-    "Flow1_offset": 0.16,
-    "Flow2_offset": 0.03,
+    "sensor_orientations": [-1, 1],  # Orientation of pressure sensor. 1 for positive reading from air flow in correct direction through venturi tube
+    "Flow1_multiplier": 0.09912976335,
+    "Flow2_multiplier": -0.09640041172,
+    "Pressure1_offset": 0.007,
+    "Pressure2_offset": -0.028,
     "flow_threshold": 0.02,
-    "sampling_freq": 1000,
+    "sampling_freq_hz": 1000,
     "cutoff_freq": 50,
     "order": 5,
-    "buffer": "50ms",
-    "resample": "1ms"
+    "use_filter": True,
 }
-
 
 test_names = ["Test 1", "Test 2", "Test 3", "Test 4"]
 
@@ -120,7 +117,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.populate_devices()
         self.eit_reader = Reader(tag="EIT")
         self.flow_reader = Reader(tag="Flow")  # Tags used for saving AND to refer to calibration in venturi config dict
-        self.volume_calc = BidirectionalVenturiFlowCalculator(work_timeout=.5, buffer_size=1000)
+        self.volume_calc = BidirectionalVenturiFlowCalculator(work_timeout=.1, buffer_size=1000)
         self.eit_processor = EITProcessor()
         self.data_saver = DataSaver()
         self.conf = default_conf
