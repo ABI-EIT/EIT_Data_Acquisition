@@ -5,10 +5,10 @@ from scipy import integrate
 from scipy import signal
 import time
 
-# file_name = "data/2021-04-19T11_19_flow_shorter_venturi_f1_calibration.csv"
-# file_name = "data/2021-04-19T11_20_flow_shorter_venturi_f1_verification.csv"
-# file_name = "data/2021-04-19T11_21_flow_shorter_venturi_f2_calibration.csv"
-# file_name = "data/2021-04-19T11_22_flow_shorter_venturi_f2_verification.csv"
+# file_name = "data/2021-04-20T15_03_flow_a_in_b_out_cal_f1_redo.csv"
+file_name = "data/2021-04-20T14_52_flow_a_in_b_out_cal_f1_verification.csv"
+# file_name = "data/2021-04-20T14_53_flow_a_in_b_out_cal_f2.csv"
+file_name = "data/2021-04-20T14_56_flow_a_in_b_out_cal_f2_verification.csv"
 
 
 cols = ["Time", "Flow"]
@@ -19,12 +19,12 @@ reference_volume = -1
 
 config = {
     "sensor_orientations": [-1, 1],  # Orientation of pressure sensor. 1 for positive reading from air flow in correct direction through venturi tube
-    "Flow1_multiplier": 0.09693754462,
-    "Flow2_multiplier": -0.09648965709,
+    "Flow1_multiplier": 0.09912976335,
+    "Flow2_multiplier": -0.09640041172,
+    "Pressure1_offset": 0.007,
+    "Pressure2_offset": -0.028,
     # "Flow1_multiplier": 0,
-    # "Flow2_multiplier": -0
-    "Pressure1_offset": 0.03,
-    "Pressure2_offset": -0.01,
+    # "Flow2_multiplier": 0,
     # "Pressure1_offset": 0,
     # "Pressure2_offset": 0,
     "flow_threshold": 0.02,

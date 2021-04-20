@@ -226,7 +226,7 @@ class BidirectionalVenturiFlowCalculator(Consumer, QtCore.QObject):
 
         # Integrate to find volume
         df_new["Volume"] = integrate.cumtrapz(df_new["Flow"], x=df_new.index.astype(np.int64) / 10 ** 9,
-                                                    initial=starting_volume)
+                                                    initial=0) + starting_volume
 
         df = df_new
 
@@ -236,7 +236,7 @@ class BidirectionalVenturiFlowCalculator(Consumer, QtCore.QObject):
             value = con.recv()
             df = pd.DataFrame(
                 columns=["Flow", "Volume", "Pressure1_filtered", "Pressure2_filtered"],
-                data=np.array([np.NaN, value, np.NaN, np.NaN]), index=[df.index[-1]])
+                data=np.array([[np.NaN, value, np.NaN, np.NaN]]), index=[df.index[-1]])
 
         on_start_results["df"] = df
 
