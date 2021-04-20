@@ -196,9 +196,12 @@ class BidirectionalVenturiFlowCalculator(Consumer, QtCore.QObject):
 
         # If we don't have enough values to filter, get some from previous window and take the volume from the first added value
         # Othewise, our starting volume is the last value of the previous window
-        if len(df_new) < pad_len:
+        if len(df_new) <= pad_len:
             extra_vals = df.iloc[-1*(pad_len-len(df_new)):]
             df_new = extra_vals[["Pressure1", "Pressure2"]].append(df_new)
+            if len(df_new) <= pad_len:
+                on_start_results["df"] = df
+                return None
             starting_volume = extra_vals["Volume"].iloc[0]
         else:
             starting_volume = 0 if "Volume" not in df.columns else df["Volume"].iloc[-1]
