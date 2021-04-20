@@ -16,6 +16,7 @@ from Toaster import Toaster
 from functools import wraps
 from time import time
 from matplotlib import animation
+from matplotlib import style
 
 Ui_MainWindow, QMainWindow = uic.loadUiType("layout/layout_dual_venturi.ui")
 
@@ -39,25 +40,28 @@ data_saving_configuration = {
 }
 
 flow_plot_config = {
-    "buffer": 10000,
+    "buffer": 30000,
     "slope": 1,
     "offset": 0,
     "min_range": 2
 }
 
 bidirectional_venturi_config = {
-    "columns": ["Flow1", "Flow2"],
-    "sensor_orientations": [-1, 1],  # Orientation of pressure sensor. 1 for positive reading from air flow through venturi tube
-    "Flow1_multiplier": 0.09880230116,
-    "Flow2_multiplier": -0.09683147461,
-    "Flow1_offset": 0.16,
-    "Flow2_offset": 0.03,
+    "sensor_orientations": [-1, 1],  # Orientation of pressure sensor. 1 for positive reading from air flow in correct direction through venturi tube
+    "Flow1_multiplier": 1,
+    "Flow2_multiplier": 1,
+    "Pressure1_offset": 0.007,
+    "Pressure2_offset": -0.028,
+    # "Flow1_multiplier": 0.09880230116,
+    # "Flow2_multiplier": -0.09683147461,
+    # "Flow1_offset": 0.16,
+    # "Flow2_offset": 0.03,
     "flow_threshold": 0.02,
-    "sampling_freq": 1000,
+    "sampling_freq_hz": 1000,
     "cutoff_freq": 50,
     "order": 5,
-    "buffer": "1s",
-    "resample": "1ms"
+    "use_filter": True,
+    "buffer": "50ms"
 }
 
 
@@ -98,11 +102,18 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.flow_reader.set_subscribers([self.volume_calc.get_work_queue(), self.data_saver.get_work_queue()])
         self.volume_calc.start_new(on_start_args=(bidirectional_venturi_config,))
 
-        self.volume_calc.new_data.connect(lambda items: (self.update_flow_plot_data(items, 0), self.update_flow_plot_data(items, 1),
-                                                         self.flowLabel.setText("{0:.2}".format(np.average([item["data"][0] for item in items]))), self.volumeLabel.setText("{0:.2}".format(items[-1]["data"][1]))))
+        self.volume_calc.new_data.connect(lambda items: self.new_volume_calc_data(items))
         self.zeroVolumeButton.clicked.connect(self.volume_calc.set_zero)
 
         self.start_time = time()
+
+    def new_volume_calc_data(self, items):
+        for i in range(4):
+            self.update_flow_plot_data(items, i)
+        self.flowLabel.setText("{0:.4f}".format(np.average(self.flow_plot_data[0]["data"])))
+        self.volumeLabel.setText("{0:.4f}".format(self.flow_plot_data[1]["data"][-1]))
+        self.pressureLabel1.setText("{0:.4f}".format(np.average(self.flow_plot_data[2]["data"])))
+        self.pressureLabel2.setText("{0:.4f}".format(np.average(self.flow_plot_data[3]["data"])))
 
     def start_recording(self, suffix):
         self.stopRecordingButton.setVisible(True)
@@ -132,10 +143,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         flow_canvas = FigureCanvas(matplotlib.figure.Figure())
         self.flow_plot_axes[i] = flow_canvas.figure.subplots()
-        toolbar = NavigationToolbar(flow_canvas, flow_canvas, coordinates=True)
 
         self.vertical_layouts[i].addWidget(flow_canvas)
-        self.vertical_layouts[i].addWidget(toolbar)
 
     def parse_flow_data(self, items, i):
         data_list = []
@@ -157,6 +166,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         new_data, new_times = self.parse_flow_data(items, i)
         data = self.flow_plot_data[i]["data"],
         times = self.flow_plot_data[i]["times"]
+        # This is here because the window calculated by the worker includes some old values (so there are enough values to run the filter)
         new_data = [element for i, element in enumerate(new_data) if new_times[i] > times[-1]]
         new_times = [element for i, element in enumerate(new_times) if new_times[i] > times[-1]]
 
@@ -191,6 +201,9 @@ def update_flow_plot(i, main_window, plot_num, axes):
     times = data_dict["times"]
 
     line = axes.plot(times, data)
+
+    # If range is smaller than min range, set ylims such that range is min range
+    # This ensures we don't zoom in too far on zero noise
     ylim = axes.get_ylim()
     range = ylim[1] - ylim[0]
     range_min = flow_plot_config["min_range"]
@@ -202,6 +215,7 @@ def update_flow_plot(i, main_window, plot_num, axes):
 if __name__ == '__main__':
     app = QtWidgets.QApplication(sys.argv)
     main_window = MainWindow()
+    main_window.setWindowTitle("Bidirectional Flow Meter")
     dw = QtWidgets.QDesktopWidget()
 
     main_window.show()

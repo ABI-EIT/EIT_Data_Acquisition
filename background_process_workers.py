@@ -148,8 +148,7 @@ class BidirectionalVenturiFlowCalculator(Consumer, QtCore.QObject):
         df = on_start_results["df"]
         config = on_start_results["config"]
 
-        columns = config["columns"]
-
+        # Parse data from arduino
         times = []
         f1 = []
         f2 = []
@@ -160,75 +159,89 @@ class BidirectionalVenturiFlowCalculator(Consumer, QtCore.QObject):
             if len(split) < 3:
                 continue
             try:
-                f1.append(np.float(split[1]))
-                f2.append(np.float(split[2]))
+                f1_val = np.float(split[1])
+                f2_val = np.float(split[2])
             except ValueError:
                 continue
-            finally:
-                times.append(item["timestamp"])
+
+            f1.append(f1_val)
+            f2.append(f2_val)
+            times.append(item["timestamp"])
 
         if f1 == [] or f2 == []:
             return None
 
-        df_new = pd.DataFrame(columns=columns,
+        df_new = pd.DataFrame(columns=["Pressure1", "Pressure2"],
                               data=np.array([f1, f2]).T,
                               index=pd.to_datetime(times, unit="s")).apply(lambda col: pd.to_numeric(col, errors="coerce"))
 
-        multipliers = np.array([config["{0}_multiplier".format(column)] for column in columns])
-        offsets = np.array([config["{0}_offset".format(column)] for column in columns])
-
-        # Convert pressure to flow and apply calibration
-        df_new = df_new*config["sensor_orientations"]
-        df_new[df_new < 0] = 0
-        df_new = df_new.pow(0.5)
-        df_new = ((df_new-offsets)*multipliers)
-
+        # Squash and resample
         df_new = df_new.groupby(df_new.index).first()
         df_new = df_new.fillna(method="pad")
-        df_new = df_new.resample(config["resample"]).pad()
+        df_new = df_new.resample(pd.to_timedelta(1/config["sampling_freq_hz"], unit="s")).pad()
 
-        df_new["abs_max"] = df_new.fillna(0).apply(lambda row: max([row[col] for col in list(set(config["columns"]).intersection(df_new.columns))], key=abs), axis=1)
+        # Orient
+        df_new = df_new * config["sensor_orientations"]
 
-        fs = config["sampling_freq"]
+        # Subtract offset from pressure reading
+        offsets = [config["Pressure1_offset"], config["Pressure2_offset"]]
+        df_new = df_new-offsets
+
+        # Low pass filter pressure reading
+        fs = config["sampling_freq_hz"]
         fc = config["cutoff_freq"]  # Cut-off frequency of the filter
         w = fc / (fs / 2)  # Normalize the frequency
         b, a = signal.butter(config["order"], w, 'low')
         pad_len = 3 * max(len(a), len(b)) # default filtfilt pad len
-        if len(df_new["abs_max"]) < pad_len:
-            return None
-        df_new["abs_max_filtered"] = signal.filtfilt(b, a, df_new["abs_max"].fillna(0))
-        # df["abs_max_filtered"] = df["abs_max"].dropna()
 
-        df_new["abs_max_filtered"].mask(df_new["abs_max_filtered"].abs() <= config["flow_threshold"], 0, inplace=True)
-
-        df_new["Naive Volume (L)"] = integrate.cumtrapz(df_new["abs_max_filtered"], x=df_new.index.astype(np.int64) / 10 ** 9,
-                                                    initial=0)
-
-        if len(df) > 0:
-            df_new["Naive Volume (L)"] = df_new["Naive Volume (L)"] + df["Naive Volume (L)"].iloc[-1]
-            df = df.append(df_new)  # assume df_new is later than df
+        # If we don't have enough values to filter, get some from previous window and take the volume from the first added value
+        # Othewise, our starting volume is the last value of the previous window
+        if len(df_new) < pad_len:
+            extra_vals = df.iloc[-1*(pad_len-len(df_new)):]
+            df_new = extra_vals[["Pressure1", "Pressure2"]].append(df_new)
+            starting_volume = extra_vals["Volume"].iloc[0]
         else:
-            df = df_new
+            starting_volume = 0 if "Volume" not in df.columns else df["Volume"].iloc[-1]
 
-        df = df.last(config["buffer"])
-        if df.empty:
-            return None
+        if config["use_filter"]:
+            df_new["Pressure1_filtered"] = signal.filtfilt(b, a, df_new["Pressure1"].fillna(0))
+            df_new["Pressure2_filtered"] = signal.filtfilt(b, a, df_new["Pressure2"].fillna(0))
+        else:
+            df_new["Pressure1_filtered"] = df_new["Pressure1"].fillna(0)
+            df_new["Pressure2_filtered"] = df_new["Pressure2"].fillna(0)
+
+        # Convert pressure to flow
+        multipliers = [config["Flow1_multiplier"], config["Flow2_multiplier"]]
+
+        df_flow = df_new[["Pressure1_filtered", "Pressure2_filtered"]]
+        df_flow = df_flow.clip(lower=0)
+        df_flow = df_flow.pow(0.5)
+        df_flow = df_flow*multipliers
+
+        # Infer flow direction ("Pressure" cols now transformed to unidirectional flow readings)
+        df_new["Flow"] = df_flow.fillna(0).apply(lambda row: max((row["Pressure1_filtered"], row["Pressure2_filtered"]), key=abs), axis=1)
+
+        # Threshold flow
+        df_new["Flow"].mask(df_new["Flow"].abs() <= config["flow_threshold"], 0, inplace=True)
+
+        # Integrate to find volume
+        df_new["Volume"] = integrate.cumtrapz(df_new["Flow"], x=df_new.index.astype(np.int64) / 10 ** 9,
+                                                    initial=starting_volume)
+
+        df = df_new
 
         # Check for message from main thread indicating command to reset integration
         con = args[0]
         if con.poll():
             value = con.recv()
-            # df = pd.DataFrame(columns=["Naive Volume (L)", "abs_max_filtered", config["columns"][0], config["columns"][1]], data=np.array([[value, np.nan, np.nan, np.nan]]), index = [df.index[-1]])
             df = pd.DataFrame(
-                columns=["Naive Volume (L)", "abs_max_filtered"],
-                data=np.array([[value, np.nan]]), index=[df.index[-1]])
+                columns=["Flow", "Volume", "Pressure1_filtered", "Pressure2_filtered"],
+                data=np.array([np.NaN, value, np.NaN, np.NaN]), index=[df.index[-1]])
 
         on_start_results["df"] = df
 
-        # return [{"tag": "Volume", "data": (element[0], element[1], element[2], element[3]), "timestamp": element[4]} for element in
-        #         zip(df["abs_max_filtered"], df["Naive Volume (L)"], df[config["columns"][0]], df[config["columns"][1]], df.index.astype(np.int64) / 10 ** 9)]
-        return [{"tag": "Volume", "data": (element[0], element[1]), "timestamp": element[2]} for element in
-                zip(df["abs_max_filtered"], df["Naive Volume (L)"], df.index.astype(np.int64) / 10 ** 9)]
+        return [{"tag": "Volume", "data": element[0:-1], "timestamp": element[-1]} for element in
+                zip(df["Flow"], df["Volume"], df["Pressure1_filtered"], df["Pressure2_filtered"], df.index.astype(np.int64) / 10 ** 9)]
 
     @staticmethod
     def on_stop(on_start_results, state, message_pipe, *args):
@@ -240,7 +253,6 @@ class BidirectionalVenturiFlowCalculator(Consumer, QtCore.QObject):
 
     def set_zero(self):
         self.con1.send(0.0)
-
 
 
 class EITProcessor(Consumer, QtCore.QObject):

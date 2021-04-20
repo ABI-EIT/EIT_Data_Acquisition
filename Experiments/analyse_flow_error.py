@@ -6,24 +6,34 @@ from scipy import signal
 import time
 
 # file_name = "data/2021-04-19T11_19_flow_shorter_venturi_f1_calibration.csv"
-file_name = "data/2021-04-19T11_20_flow_shorter_venturi_f1_verification.csv"
+# file_name = "data/2021-04-19T11_20_flow_shorter_venturi_f1_verification.csv"
 # file_name = "data/2021-04-19T11_21_flow_shorter_venturi_f2_calibration.csv"
 # file_name = "data/2021-04-19T11_22_flow_shorter_venturi_f2_verification.csv"
-#
-flow_threshold = 0.01
-flow_1_multiplier = 0.09880230116
-flow_2_multiplier = -0.09683147461
-flow_1_offset = 0.16
-flow_2_offset = 0.03
 
-sensor_1_orientation = -1
-sensor_2_orientation = 1
 
 cols = ["Time", "Flow"]
 
 trigger = 0.1
 delta_trigger = 0.5
-reference_volume = 1
+reference_volume = -1
+
+config = {
+    "sensor_orientations": [-1, 1],  # Orientation of pressure sensor. 1 for positive reading from air flow in correct direction through venturi tube
+    "Flow1_multiplier": 0.09693754462,
+    "Flow2_multiplier": -0.09648965709,
+    # "Flow1_multiplier": 0,
+    # "Flow2_multiplier": -0
+    "Pressure1_offset": 0.03,
+    "Pressure2_offset": -0.01,
+    # "Pressure1_offset": 0,
+    # "Pressure2_offset": 0,
+    "flow_threshold": 0.02,
+    "sampling_freq_hz": 1000,
+    "cutoff_freq": 50,
+    "order": 5,
+    "use_filter": True,
+    "buffer": "50ms"
+}
 
 
 def delta_to_next(row, column_a, column_b, next_target=0):
@@ -49,52 +59,70 @@ def main():
     data = pd.read_csv(file_name, usecols=cols, index_col=0)
     data.index = data.index - data.index[0]
     data = data.groupby(data.index).first()  # In groups of duplicate index, for each column, find the first non na row. (This merges duplicate timestamps keeping non na cells)
-    data["Flow1"] = pd.to_numeric(data["Flow"].str.split(",", expand=True)[1], errors="coerce")
-    data["Flow2"] = pd.to_numeric(data["Flow"].str.split(",", expand=True)[2], errors="coerce")
+    data["Pressure1"] = pd.to_numeric(data["Flow"].str.split(",", expand=True)[1], errors="coerce")
+    data["Pressure2"] = pd.to_numeric(data["Flow"].str.split(",", expand=True)[2], errors="coerce")
 
-    mean_freq = 1/(data["Flow1"].dropna().index[-1]/len(data["Flow1"].dropna()))
+    mean_freq = 1/(data["Pressure1"].dropna().index[-1]/len(data["Pressure1"].dropna()))
     print("Mean frequency is %.2fhz" % mean_freq)
     time_deltas = [*data.index[1:], np.NaN] - data.index
     plt.plot(time_deltas, marker=".")
     data = data.fillna(method="pad")  # All measurements collected at different times, so we pad to get columns side by side
     data.index = pd.to_datetime(data.index, unit="s")
-    data = data.resample("1ms").pad()
 
-    data["Flow1 (L/s)"] = (((data["Flow1"]*sensor_1_orientation).pow(.5).fillna(0)) - flow_1_offset) * flow_1_multiplier
-    data["Flow2 (L/s)"] = (((data["Flow2"]*sensor_2_orientation).pow(.5).fillna(0)) - flow_2_offset) * flow_2_multiplier
+    # Squash and resample
+    data = data.resample(pd.to_timedelta(1 / config["sampling_freq_hz"], unit="s")).pad()
 
-    data["abs_max"] = data.apply(lambda row: max(row["Flow1 (L/s)"], row["Flow2 (L/s)"], key=abs), axis=1)
+    # Orient
+    data[["Pressure1", "Pressure2"]] = data[["Pressure1","Pressure2"]] * config["sensor_orientations"]
 
-    fs = 1000
-    fc = 50  # Cut-off frequency of the filter
+    # Subtract offset from pressure reading
+    offsets = [config["Pressure1_offset"], config["Pressure2_offset"]]
+    data[["Pressure1","Pressure2"]] = data[["Pressure1","Pressure2"]] - offsets
+
+    # Low pass filter pressure reading
+    fs = config["sampling_freq_hz"]
+    fc = config["cutoff_freq"]  # Cut-off frequency of the filter
     w = fc / (fs / 2)  # Normalize the frequency
-    b, a = signal.butter(5, w, 'low')
-    data["abs_max_filtered"] = signal.filtfilt(b, a, data["abs_max"])
+    b, a = signal.butter(config["order"], w, 'low')
+    pad_len = 3 * max(len(a), len(b))  # default filtfilt pad len
 
-    data["abs_max_filtered"].mask(data["abs_max_filtered"].abs() < flow_threshold, 0, inplace=True)
+    if config["use_filter"]:
+        data["Pressure1_filtered"] = signal.filtfilt(b, a, data["Pressure1"].fillna(0))
+        data["Pressure2_filtered"] = signal.filtfilt(b, a, data["Pressure2"].fillna(0))
+    else:
+        data["Pressure1_filtered"] = data["Pressure1"].fillna(0)
+        data["Pressure2_filtered"] = data["Pressure2"].fillna(0)
 
-    data["Naive Volume (L)"] = integrate.cumtrapz(data["abs_max_filtered"], x=data.index.astype(np.int64)/10**9, initial=0)
+    # Convert pressure to flow
+    multipliers = [config["Flow1_multiplier"], config["Flow2_multiplier"]]
 
-    ax = data[["Flow1 (L/s)", "Flow2 (L/s)", "abs_max_filtered", "Naive Volume (L)"]].plot()
+    df_flow = data[["Pressure1_filtered", "Pressure2_filtered"]]
+    df_flow = df_flow.clip(lower=0)
+    df_flow = df_flow.pow(0.5)
+    df_flow = df_flow * multipliers
+
+    # Infer flow direction ("Pressure" cols now transformed to unidirectional flow readings)
+    data["Flow"] = df_flow.fillna(0).apply(
+        lambda row: max((row["Pressure1_filtered"], row["Pressure2_filtered"]), key=abs), axis=1)
+
+    # Threshold flow
+    data["Flow"].mask(data["Flow"].abs() <= config["flow_threshold"], 0, inplace=True)
+
+    # Integrate to find volume
+    data["Volume"] = integrate.cumtrapz(data["Flow"], x=data.index.astype(np.int64) / 10 ** 9,
+                                          initial=0)
+
+    ax = data[["Pressure1_filtered", "Pressure2_filtered", "Flow", "Volume"]].plot()
     ax.set_title("Measured flow (L/s) and calculated volume (L) vs time")
-    # data[["abs_max", "abs_max_filtered"]].plot()
 
-    print("Flow1 (L/s) mean:" + str(data["Flow1 (L/s)"].mean()))
-    print("Flow2 (L/s) mean:" + str(data["Flow2 (L/s)"].mean()))
+    # -----------------------------------------------------------------------------------------------------
 
-    print("Volume at end: " + str(data["Naive Volume (L)"].iloc[-1]))
-    vol_300 = data["Naive Volume (L)"].iloc[np.argmax(np.isclose(data.index.astype(np.int64)/10**9, 300, atol=0.5))]
-    print("Volume at 5 minutes: " + str(vol_300))
-
-    # data["abs_max_filtered"] = data["abs_max_filtered"] * -1 # Multiply by -1 for flow2
-    # data["Naive Volume (L)"] = data["Naive Volume (L)"] * -1
-
-    data["ups"] = np.logical_and(data["abs_max_filtered"] == 0,
-                         np.not_equal(np.append(data["abs_max_filtered"].iloc[1:].values, 0), 0))
+    data["ups"] = np.logical_and(data["Flow"] == 0,
+                         np.not_equal(np.append(data["Flow"].iloc[1:].values, 0), 0))
 
     # data_deltas = data[data["abs_max_filtered"] == 0].apply(lambda row: delta_to_next(row, data["abs_max_filtered"], data["Naive Volume (L)"]), axis=1)
     data_deltas = data[data["ups"]].apply(
-        lambda row: delta_to_next(row, data["abs_max_filtered"], data["Naive Volume (L)"]), axis=1)
+        lambda row: delta_to_next(row, data["Flow"], data["Volume"]), axis=1)
 
     for item in data_deltas.iteritems():
         if item[1] != np.NaN and np.abs(item[1]) >= delta_trigger:
