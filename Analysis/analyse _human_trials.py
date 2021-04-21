@@ -14,6 +14,7 @@ from abi_pyeit.quality.plotting import *
 from abi_pyeit.app.eit import *
 import math
 import matplotlib.animation as animation
+from itertools import count
 
 
 def main():
@@ -26,18 +27,27 @@ def main():
     # Read data in
     data = pd.read_csv(filename, index_col=0, low_memory=False)
     data.index = pd.to_datetime(data.index, unit=ABI_EIT_time_unit)
-    if "Flow" in data.columns:
-        parse_flow(data)
+    parse_flow(data)
     data.index = data.index - data.index[0]
 
     # Tidy data. Don't fill Tag column to preserve precise timing
-    data = squash_and_resample(data, freq_column="Flow1", no_pad_columns=["Tag", "EIT"])
+    data = squash_and_resample(data, resample_freq_hz=config["resample_freq_hz"], freq_column="Pressure1", no_pad_columns=["Tag", "EIT"])
+
+    # Orient
+    sensor_orientations = [dataset_config["Flow1_sensor_orientation"], dataset_config["Flow2_sensor_orientation"]]
+    data[["Pressure1", "Pressure2"]] = data[["Pressure1", "Pressure2"]] * sensor_orientations
+
+    # Subtract offset from pressure reading
+    offsets = [dataset_config["Flow1_offset"], dataset_config["Flow2_offset"]]
+    data[["Pressure1", "Pressure2"]] = data[["Pressure1", "Pressure2"]] - offsets
+
+    # Low pass filter pressure data
+    data[["Pressure1_filtered", "Pressure2_filtered"]] = data[["Pressure1", "Pressure2"]].apply(lambda column: filter_data(column, fs=config["resample_freq_hz"]))
 
     # Convert pressure to flow
-    data[["Flow1 (L/s)", "Flow2 (L/s)"]] = data[["Flow1", "Flow2"]].apply(
-        lambda column: venturi_pressure_to_flow(column, multiplier=dataset_config[column.name + "_multiplier"],
-                                                offset=dataset_config[column.name + "_offset"],
-                                                sensor_orientation=dataset_config[column.name + "_sensor_orientation"]))
+    multipliers = [dataset_config["Flow1_multiplier"], dataset_config["Flow2_multiplier"]]
+    data[["Flow1 (L/s)", "Flow2 (L/s)"]] = data[["Pressure1_filtered", "Pressure2_filtered"]].apply(
+        lambda column, params: venturi_pressure_to_flow(column, multiplier=multipliers[next(params)]), params=count())
 
     # Find flow in correct direction
     data["Flow (L/s)"] = infer_flow_direction(data["Flow1 (L/s)"], data["Flow2 (L/s)"])
@@ -77,9 +87,9 @@ def main():
     fig, ani1 = create_animated_image_plot(lin_out["df"]["recon_render"].values, title="Reconstruction image animation", vmin=recon_min, vmax=recon_max)
     fig, ani2 = create_animated_image_plot(lin_out["df"]["threshold_image"].values, title="Threshold image animation")
 
-    # # Save animations
+    # # # Save animations
     # writer_gif = animation.PillowWriter(fps=2, bitrate=2000)
-    # ani1.save(str(pathlib.Path(filename).parent) + "\\" + "Reconstruction image animation.gif", writer_gif, dpi=1000)
+    # # ani1.save(str(pathlib.Path(filename).parent) + "\\" + "Reconstruction image animation.gif", writer_gif, dpi=1000)
     # ani2.save(str(pathlib.Path(filename).parent) + "\\" + "Threshold image animation.gif", writer_gif, dpi=1000)
 
     fig, ax = plt.subplots()
@@ -92,6 +102,8 @@ def main():
         ax.set_ylabel("EIT image area (pixels)^1.5/max_pixels^1.5")
         ax.figure.tight_layout(pad=1)
 
+    # Save data
+    lin_out["df"][["Volume delta", "area^1.5_normalized"]].to_csv(str(pathlib.Path(filename).parent) + "\\" + "eit_vs_volume.csv")
 
     plt.show()
 
@@ -277,7 +289,15 @@ def find_last_test_start_and_stop(data, test_name, start_label="Start", stop_lab
     return start, stop
 
 
-def calculate_volume(flow, x=None, dx=0.001, fs=1000, fc=50, flow_threshold=0.02):
+def filter_data(column, fs=1000, fc=50):
+    w = fc / (fs / 2)  # Normalize the frequency
+    b, a = signal.butter(5, w, 'low')
+
+    filtered = signal.filtfilt(b, a, column)
+    return filtered
+
+
+def calculate_volume(flow, x=None, dx=0.001, flow_threshold=0.02):
     """
     Calculate volume from flow.
     This function performs a cumulative trapezoidal integration after filtering and thresholding the flow data
@@ -300,11 +320,8 @@ def calculate_volume(flow, x=None, dx=0.001, fs=1000, fc=50, flow_threshold=0.02
     if x == "index_as_seconds":
         x = flow.index.astype(np.int64)/10**9
 
-    w = fc / (fs / 2)  # Normalize the frequency
-    b, a = signal.butter(5, w, 'low')
-    flow_filtered = signal.filtfilt(b, a, flow)
-    flow_filtered_thresholded = np.where(np.abs(flow_filtered) <= flow_threshold, 0, flow_filtered)
-    volume = integrate.cumtrapz(flow_filtered_thresholded,  x=x, dx=dx, initial=0)
+    flow_thresholded = np.where(np.abs(flow) <= flow_threshold, 0, flow)
+    volume = integrate.cumtrapz(flow_thresholded,  x=x, dx=dx, initial=0)
     return volume
 
 
@@ -361,12 +378,12 @@ def lambda_max(arr, axis=None, key=None, keepdims=False):
         return np.amax(arr, axis)
 
 
-def venturi_pressure_to_flow(pressure, multiplier, offset=0, sensor_orientation=1):
-    flow = ((pressure * sensor_orientation).pow(.5).fillna(0) - offset) * multiplier
+def venturi_pressure_to_flow(pressure, multiplier):
+    flow = pressure.clip(lower=0).pow(0.5)*multiplier
     return flow
 
 
-def squash_and_resample(data, freq_column=None, resample_freq="1ms", output=None, no_pad_columns=None):
+def squash_and_resample(data, freq_column=None, resample_freq_hz=1000, output=None, no_pad_columns=None):
     # For each column, group by repeated index and take the first non na.
     # This "squashes" data where each row contains data from only one column, but data from two different columns
     #   could have the same timestamp
@@ -387,7 +404,7 @@ def squash_and_resample(data, freq_column=None, resample_freq="1ms", output=None
     data[pad_cols] = data[pad_cols].fillna(method="pad")
 
     # Resample so we have a constant frequency which make further processing nicer
-    data = data.resample(resample_freq).first()
+    data = data.resample(pd.to_timedelta(1 / resample_freq_hz, unit="s")).first()
     data[pad_cols] = data[pad_cols].pad()
     return data
 
@@ -401,8 +418,12 @@ def parse_flow(data):
     ----------
     data: Pandas DataFrame
     """
-    data["Flow1"] = pd.to_numeric(data["Flow"].str.split(",", expand=True)[1], errors="coerce")
-    data["Flow2"] = pd.to_numeric(data["Flow"].str.split(",", expand=True)[2], errors="coerce")
+    if "Flow1" in data.columns:
+        data["Pressure1"] = data["Flow1"]
+        data["Pressure2"] = data["Flow2"]
+    elif "Flow" in data.columns:
+        data["Pressure1"] = pd.to_numeric(data["Flow"].str.split(",", expand=True)[1], errors="coerce")
+        data["Pressure2"] = pd.to_numeric(data["Flow"].str.split(",", expand=True)[2], errors="coerce")
 
 
 def load_filename(config, remember_directory=True):
@@ -518,7 +539,8 @@ default_config = {
         "chest_and_spine_ratio": 2,
         # Analysis:
         "image_threshold_proportion": .15
-    }
+    },
+    "resample_freq_hz": 1000
 }
 
 ABI_EIT_time_unit = "s"
