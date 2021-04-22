@@ -1,5 +1,5 @@
 from PyQt5 import QtCore
-from process_helpers.process_worker import Producer, Consumer, put_in_queue
+from concurrent_workers import Producer, Consumer
 from multiprocessing import Manager
 import matplotlib.tri as tri
 import pyvisa
