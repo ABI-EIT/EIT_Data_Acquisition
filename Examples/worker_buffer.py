@@ -1,4 +1,4 @@
-from background_workers import *
+from thread_helpers.background_workers import *
 import time
 
 run_time_1 = 5

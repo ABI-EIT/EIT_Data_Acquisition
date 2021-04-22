@@ -14,6 +14,7 @@ import time
 from background_process_workers import *
 from Toaster import Toaster
 from PyQt5.QtGui import QIcon
+from concurrent_workers import put_in_queue
 
 Ui_MainWindow, QMainWindow = uic.loadUiType("layout/eit_with_dual_flow.ui")
 
@@ -149,7 +150,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         self.flow_reader.set_subscribers([self.volume_calc.get_work_queue(), self.data_saver.get_work_queue()])
         self.flow_reader.on_connect_failed = lambda: self.flow_connect_failed()
-        self.volume_calc.start_new(on_start_args=(bidirectional_venturi_config,))
+        self.volume_calc.start_new(work_kwargs={"configuration":bidirectional_venturi_config})
 
         self.volume_calc.new_data.connect(lambda items: (self.update_flow_plot(items), self.volumeLabel.setText("{0:.2}".format(items[-1]["data"][1]))))
         self.zeroVolumeButton.clicked.connect(self.volume_calc.set_zero)
@@ -227,7 +228,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.stopRecordingButton.setVisible(True)
         self.startRecordingButton.setVisible(False)
 
-        self.data_saver.start_new(on_start_args=(suffix, data_saving_configuration))
+        self.data_saver.start_new(work_kwargs={"suffix": suffix, "configuration": data_saving_configuration})
 
         self.comboBox.setEnabled(False)
         self.comboBoxFlow1.setEnabled(False)
@@ -384,13 +385,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 self.eit_reader.set_stopped()
                 self.update_ui_state()
                 return
-        self.eit_processor.start_new(on_start_args=(self.eit_obj, self.conf, self.initial_background))
+        self.eit_processor.start_new(work_kwargs={"eit_obj": self.eit_obj, "configuration": self.conf, "initial_bg": self.initial_background})
         self.eit_processor.new_data.connect(lambda data: self.update_eit_plot(data[0], data[1], data[2]))
 
         self.set_background_button.setEnabled(True)
         self.clear_background_button.setEnabled(True)
 
-        self.eit_reader.start_new(on_start_args=(text, spectra_configuration))
+        self.eit_reader.start_new(work_kwargs={"device_name": text, "configuration": spectra_configuration})
 
         self.update_ui_state()
 
@@ -402,7 +403,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 self.flow_reader.set_stopped()
                 self.update_ui_state()
                 return
-        self.flow_reader.start_new(on_start_args=(text, flow_configuration))
+        self.flow_reader.start_new(work_kwargs={"device_name": text, "configuration": flow_configuration})
         self.update_ui_state()
 
 

@@ -32,14 +32,14 @@ class Reader(Producer, QtCore.QObject):
         tag = kwargs.pop("tag")
         Producer.__init__(self, *args, **kwargs)
         QtCore.QObject.__init__(self)
-        self.work_args = (tag,)
+        self.work_kwargs = {"tag": tag}
         self.on_connect_failed = None
         self.on_connect_succeeded = None
 
     @staticmethod
-    def on_start(state, message_pipe, *args):
-        device_name = args[0]
-        configuration = args[1]
+    def on_start(state, message_pipe, *args, **kwargs):
+        device_name = kwargs["device_name"]
+        configuration = kwargs["configuration"]
         try:
             device = serial.Serial(port=device_name, baudrate=configuration["baud"], timeout=configuration["read_timeout"])
             device.flushInput()
@@ -52,9 +52,9 @@ class Reader(Producer, QtCore.QObject):
         return {"configuration": configuration, "device": device}
 
     @staticmethod
-    def on_stop(on_start_results, state, message_pipe, *args):
+    def on_stop(shared_var, state, message_pipe, *args, **kwargs):
         print("Reader stopped")
-        device = on_start_results["device"]
+        device = shared_var["device"]
         if device is not None:
             try:
                 device.close()
@@ -64,10 +64,10 @@ class Reader(Producer, QtCore.QObject):
         pass
 
     @staticmethod
-    def work(on_start_results, state, message_pipe, *args):
-        tag = args[0]
-        device = on_start_results["device"]
-        configuration = on_start_results["configuration"]
+    def work(shared_var, state, message_pipe, *args, **kwargs):
+        tag = kwargs["tag"]
+        device = shared_var["device"]
+        configuration = shared_var["configuration"]
 
         try:
             # data = device.read_until(configuration["read_termination_char"])
@@ -114,7 +114,7 @@ class QueueEmitter(Consumer, QtCore.QObject):
         QtCore.QObject.__init__(self)
 
     @staticmethod
-    def work(items, on_start_results, state, message_pipe, *args):
+    def work(items, on_start_results, state, message_pipe, *args, **kwargs):
         return [item for item in items if item is not None]
 
     def on_result_ready(self, results):
@@ -134,19 +134,18 @@ class BidirectionalVenturiFlowCalculator(Consumer, QtCore.QObject):
         self.work_args = (con2,)
 
     @staticmethod
-    def on_start(state, message_pipe, *args):
+    def on_start(state, message_pipe, *args, **kwargs):
         df = pd.DataFrame()
-        config = args[0]
 
-        return {"df": df, "config": config}
+        return {"df": df}
 
     @staticmethod
-    def work(items, on_start_results, state, message_pipe, *args):
+    def work(items, shared_var, state, message_pipe, *args, **kwargs):
         if not items:
             return None
 
-        df = on_start_results["df"]
-        config = on_start_results["config"]
+        df = shared_var["df"]
+        config = kwargs["configuration"]
 
         # Parse data from arduino
         times = []
@@ -200,7 +199,7 @@ class BidirectionalVenturiFlowCalculator(Consumer, QtCore.QObject):
             extra_vals = df.iloc[-1*(pad_len-len(df_new)):]
             df_new = extra_vals[["Pressure1", "Pressure2"]].append(df_new)
             if len(df_new) <= pad_len:
-                on_start_results["df"] = df
+                shared_var["df"] = df
                 return None
             starting_volume = extra_vals["Volume"].iloc[0]
         else:
@@ -241,13 +240,13 @@ class BidirectionalVenturiFlowCalculator(Consumer, QtCore.QObject):
                 columns=["Flow", "Volume", "Pressure1_filtered", "Pressure2_filtered"],
                 data=np.array([[np.NaN, value, np.NaN, np.NaN]]), index=[df.index[-1]])
 
-        on_start_results["df"] = df
+        shared_var["df"] = df
 
         return [{"tag": "Volume", "data": element[0:-1], "timestamp": element[-1]} for element in
                 zip(df["Flow"], df["Volume"], df["Pressure1_filtered"], df["Pressure2_filtered"], df.index.astype(np.int64) / 10 ** 9)]
 
     @staticmethod
-    def on_stop(on_start_results, state, message_pipe, *args):
+    def on_stop(shared_var, state, message_pipe, *args, **kwargs):
         pass
 
     def on_result_ready(self, results):
@@ -268,22 +267,21 @@ class EITProcessor(Consumer, QtCore.QObject):
         self.bg_dict = man.dict()
         self.bg_dict["background"] = None
         self.bg_dict["current_frame"] = None
-        self.on_start_args = (self.bg_dict,)
+        self.work_kwargs = {"bg_dict": self.bg_dict}
 
     @staticmethod
-    def on_start(state, message_pipe, *args):
-        bg_dict = args[0]
-        eit_obj = args[1]
-        conf = args[2]
-        initial_background = args[3]
-        eit_obj = eit_obj
+    def on_start(state, message_pipe, *args, **kwargs):
+        conf = kwargs["configuration"]
         conf = load_conf(conf)
+
+        bg_dict = kwargs["bg_dict"]
+        initial_background = kwargs["initial_bg"]
         if initial_background is not None:
             background = load_oeit_data(initial_background)[0]
         else:
             background = None
         bg_dict["background"] = background
-        return {"bg_dict": bg_dict, "eit_obj": eit_obj, "conf": conf}
+        return {"bg_dict": bg_dict, "conf": conf}
 
     def set_background(self, background):
         self.bg_dict["background"] = background
@@ -298,10 +296,10 @@ class EITProcessor(Consumer, QtCore.QObject):
         return self.bg_dict["current_frame"]
 
     @staticmethod
-    def work(items, on_start_results, state, message_pipe, *args):
-        bg_dict = on_start_results["bg_dict"]
-        eit_obj = on_start_results["eit_obj"]
-        conf = on_start_results["conf"]
+    def work(items, shared_var, state, message_pipe, *args, **kwargs):
+        bg_dict = shared_var["bg_dict"]
+        eit_obj = kwargs["eit_obj"]
+        conf = shared_var["conf"]
         background = bg_dict["background"]  # bg_dict is a managed dict, so shared across processes
 
         results = []
@@ -336,7 +334,7 @@ class DataSaver(Consumer):
         man = Manager()
         self.filename_dict = man.dict()
         self.filename_dict["filename"] = None
-        self.on_start_args = (self.filename_dict,)
+        self.work_kwargs = {"filename_dict": self.filename_dict}
 
     @staticmethod
     def create_unique_save_file(suffix, data_saving_configuration):
@@ -362,33 +360,33 @@ class DataSaver(Consumer):
         return open(directory + file_name + addition + ext, "x", newline="")
 
     @staticmethod
-    def on_start(state, message_pipe, *args):
-        filename_dict = args[0]
-        suffix = args[1]
-        data_saving_configuration = args[2]
+    def on_start(state, message_pipe, *args, **kwargs):
+        filename_dict = kwargs["filename_dict"]
+        suffix = kwargs["suffix"]
+        data_saving_configuration = kwargs["configuration"]
         file = DataSaver.create_unique_save_file(suffix, data_saving_configuration)
         filename_dict["filename"] = file.name
-        csv_writer = csv.writer(file , delimiter=data_saving_configuration["delimiter"], quoting=csv.QUOTE_MINIMAL)
+        csv_writer = csv.writer(file, delimiter=data_saving_configuration["delimiter"], quoting=csv.QUOTE_MINIMAL)
         csv_writer.writerow(data_saving_configuration["columns"])
         # TODO Write file with header section
-        return file, csv_writer, data_saving_configuration
+        return {"file": file, "csv_writer": csv_writer}
 
     @staticmethod
-    def on_stop(on_start_results, state, message_pipe, *args):
-        file = on_start_results[0]
+    def on_stop(shared_var, state, message_pipe, *args, **kwargs):
+        file = shared_var["file"]
         file.close()
 
     def get_filename(self):
         return self.filename_dict["filename"]
 
     @staticmethod
-    def work(buffer, on_start_results, state, message_pipe, *args):
+    def work(buffer, shared_var, state, message_pipe, *args, **kwargs):
         buffer = np.array(buffer)
         buffer = buffer[buffer != np.array(None)]
 
-        file = on_start_results[0]
-        csv_writer = on_start_results[1]
-        data_saving_configuration = on_start_results[2]
+        file = shared_var["file"]
+        csv_writer = shared_var["csv_writer"]
+        data_saving_configuration = kwargs["configuration"]
 
         output_list = []
         for item in buffer:
