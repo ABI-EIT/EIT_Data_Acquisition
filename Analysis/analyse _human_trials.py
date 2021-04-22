@@ -102,8 +102,8 @@ def main():
         ax.set_ylabel("EIT image area (pixels)^1.5/max_pixels^1.5")
         ax.figure.tight_layout(pad=1)
 
-    # Save data
-    lin_out["df"][["Volume delta", "area^1.5_normalized"]].to_csv(str(pathlib.Path(filename).parent) + "\\" + "eit_vs_volume.csv")
+    # # Save data
+    # lin_out["df"][["Volume delta", "area^1.5_normalized"]].to_csv(str(pathlib.Path(filename).parent) + "\\" + "eit_vs_volume.csv")
 
     plt.show()
 
