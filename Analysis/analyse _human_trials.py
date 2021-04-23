@@ -1,28 +1,25 @@
 from tkinter import Tk
 from tkinter.filedialog import askopenfilename
-import os
-import pathlib
 import pandas as pd
-import yaml
 import numpy as np
 from scipy import signal
 from scipy import integrate
 from scipy.stats import linregress
 import matplotlib.pyplot as plt
-import json
 from abi_pyeit.quality.plotting import *
 from abi_pyeit.app.eit import *
 import math
 import matplotlib.animation as animation
 from itertools import count
+from config_lib import Config
 
 
 def main():
-    config = Config(config_path, default_config)
+    config = Config(config_path, default_config, type="yaml")
     filename = load_filename(config)
 
     dataset_config_filename = list(pathlib.Path(filename).parent.glob(config["dataset_config_glob"]))[0]
-    dataset_config = Config(dataset_config_filename)
+    dataset_config = Config(dataset_config_filename, type="yaml")
 
     # Read data in
     data = pd.read_csv(filename, index_col=0, low_memory=False)
@@ -459,61 +456,6 @@ def load_filename(config, remember_directory=True):
             config.save()
 
     return filename
-
-
-class Config:
-    """
-        A class to manage a configuration dict.
-        Load safely loads the config from file, using default values if necessary
-        Save safely saves the internal config dict to file
-    """
-    def __init__(self, path, default=None, type="yaml"):
-        if default is None:
-            default = {}
-        if type != "yaml" and type != "json":
-            raise ValueError("Config type must be yaml or json")
-        self.type = type
-        self.default_config = default
-        self.config = default
-        self.path = path
-        self.load()
-
-    def load(self):
-        if os.path.exists(self.path):
-            with open(self.path, "r") as f:
-                if self.type == "yaml":
-                    self.config = yaml.safe_load(f)
-                else:
-                    self.config = json.load(f)
-
-            for key, default_value in self.default_config.items():
-                resave = False
-                if key not in self.config:
-                    resave = True
-                    self.config[key] = default_value
-
-                if resave:
-                    self.save()
-        else:
-            self.config = self.default_config
-
-    def save(self):
-        pathlib.Path(config_path).parent.mkdir(parents=True, exist_ok=True)
-
-        with open(self.path, "w") as f:
-            if self.type == "yaml":
-                yaml.safe_dump(self.config, f, width=1000)
-            else:
-                json.dump(self.config, f)
-
-    def __getitem__(self, key):
-        return self.config[key]
-
-    def __setitem__(self, key, value):
-        self.config[key] = value
-
-    def __contains__(self, item):
-        return item in self.config
 
 
 # Default configurations -----------------------------------------------------

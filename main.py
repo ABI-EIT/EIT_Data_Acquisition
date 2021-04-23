@@ -15,6 +15,7 @@ from background_process_workers import *
 from Toaster import Toaster
 from PyQt5.QtGui import QIcon
 from concurrent_workers import put_in_queue
+import config_lib
 
 Ui_MainWindow, QMainWindow = uic.loadUiType("layout/eit_with_dual_flow.ui")
 
@@ -128,7 +129,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.eit_scale = (np.inf, np.NINF)  # ymin, ymax
         self.breathe_labels = (self.inLabel, self.holdLabel1, self.outLabel, self.holdLabel2, self.restLabel)
         self.first_breathe_label_index = 4
-        self.breathe_label_count = -1 
+        self.breathe_label_count = -1
+        self.settings_window = SettingsWindow(None)
 
         self.comboBox.currentTextChanged.connect(self.change_eit_device)
         self.startRecordingButton.clicked.connect(
@@ -160,6 +162,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.checkBoxScale.stateChanged.connect(lambda state: self.reset_eit_scale() if not state else None)
 
         self.resetButton.clicked.connect(self.reset_breathe_labels)
+
+        self.settingsButton.clicked.connect(self.settings_window.show)
+        self.settings_window.accepted.connect(lambda: Toaster.showMessage(self, "Accepted"))
+        self.settings_window.rejected.connect(lambda: Toaster.showMessage(self, "Rejected"))
 
         self.start_time = time()
         self.update_ui_state()
@@ -405,6 +411,41 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 return
         self.flow_reader.start_new(work_kwargs={"device_name": text, "configuration": flow_configuration})
         self.update_ui_state()
+
+
+class SettingsWindow(QtWidgets.QDialog):
+
+    def __init__(self, config):
+        super().__init__()
+        self.setModal(True)
+
+        self.buttons = QtWidgets.QDialogButtonBox()
+        self.buttons.setStandardButtons(QtWidgets.QDialogButtonBox.Save | QtWidgets.QDialogButtonBox.Cancel)
+        self.buttons.buttons()[0].clicked.connect(self.accept)
+        self.buttons.buttons()[1].clicked.connect(self.reject)
+
+        self.form1 = QtWidgets.QFormLayout()
+        self.form1.addRow("Row1", QtWidgets.QTextEdit())
+        self.form1.addRow("Row2", QtWidgets.QDial())
+
+        self.tab = QtWidgets.QTabWidget()
+        tab1 = QtWidgets.QWidget()
+        tab1.setLayout(self.form1)
+        self.tab.addTab(tab1, "Tab1")
+        self.tab.addTab(QtWidgets.QWidget(), "Tab2")
+
+        self.vbox = QtWidgets.QVBoxLayout(self)
+        self.vbox.addWidget(self.tab)
+        self.vbox.addWidget(self.buttons)
+
+        self.setLayout(self.vbox)
+
+        #  TODO: Create layout from config
+
+    def showEvent(self, event):
+        super().showEvent(event)
+
+        # TODO: Populate forms from config
 
 
 if __name__ == '__main__':
