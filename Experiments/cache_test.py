@@ -9,27 +9,29 @@ import time
 @lru_cache
 class Foo:
     def __init__(self, arr):
-        arr = arr.unwrap()
-        self.arr = arr**60
+        self.arr = np.power(arr,60)
         time.sleep(0.1)
 
 
 class Bar:
     def __init__(self, arr):
-        self.arr = arr**60
+        self.arr = np.power(arr,60)
         time.sleep(0.1)
 
 
 loopnum = 100
 
+
 def fooloop():
     an_array = np.array([1., 2., 3., 4.])
+    a_hashable = HashableNdarray(an_array)
 
     foos = []
     for i in range(loopnum):
-        foos.append(Foo(hashable(an_array)))
+        foos.append(Foo(a_hashable))
 
     return foos
+
 
 def barloop():
     an_array = np.array([1., 2., 3., 4.])
@@ -41,46 +43,51 @@ def barloop():
     return bars
 
 
+class Wrapper(object):
+    """Wrapper class that provides proxy access to an instance of some
+       internal instance."""
 
-class hashable(object):
-    r'''Hashable wrapper for ndarray objects.
-        Instances of ndarray are not hashable, meaning they cannot be added to
-        sets, nor used as keys in dictionaries. This is by design - ndarray
-        objects are mutable, and therefore cannot reliably implement the
-        __hash__() method.
-        The hashable class allows a way around this limitation. It implements
-        the required methods for hashable objects in terms of an encapsulated
-        ndarray object. This can be either a copied instance (which is safer)
-        or the original object (which requires the user to be careful enough
-        not to modify it).
-    '''
-    def __init__(self, wrapped, tight=False):
-        r'''Creates a new hashable object encapsulating an ndarray.
-            wrapped
-                The wrapped ndarray.
-            tight
-                Optional. If True, a copy of the input ndaray is created.
-                Defaults to False.
-        '''
-        self.__tight = tight
-        self.__wrapped = array(wrapped) if tight else wrapped
-        self.__hash = int(sha1(wrapped.view(uint8)).hexdigest(), 16)
+    __wraps__  = None
+    __ignore__ = "class mro new init setattr getattr getattribute"
+
+    def __init__(self, obj):
+        if self.__wraps__ is None:
+            raise TypeError("base class Wrapper may not be instantiated")
+        elif isinstance(obj, self.__wraps__):
+            self._obj = obj
+        else:
+            raise ValueError("wrapped object must be of %s" % self.__wraps__)
+
+    # provide proxy access to regular attributes of wrapped object
+    def __getattr__(self, name):
+        return getattr(self._obj, name)
+
+    # create proxies for wrapped object's double-underscore attributes
+    class __metaclass__(type):
+        def __init__(cls, name, bases, dct):
+
+            def make_proxy(name):
+                def proxy(self, *args):
+                    return getattr(self._obj, name)
+                return proxy
+
+            type.__init__(cls, name, bases, dct)
+            if cls.__wraps__:
+                ignore = set("__%s__" % n for n in cls.__ignore__.split())
+                for name in dir(cls.__wraps__):
+                    if name.startswith("__"):
+                        if name not in ignore and name not in dct:
+                            setattr(cls, name, property(make_proxy(name)))
+
+
+class HashableNdarray(Wrapper):
+    __wraps__ = np.ndarray
 
     def __eq__(self, other):
-        return all(self.__wrapped == other.__wrapped)
+        return all(self == other)
 
     def __hash__(self):
-        return self.__hash
-
-    def unwrap(self):
-        r'''Returns the encapsulated ndarray.
-            If the wrapper is "tight", a copy of the encapsulated ndarray is
-            returned. Otherwise, the encapsulated ndarray itself is returned.
-        '''
-        if self.__tight:
-            return array(self.__wrapped)
-
-        return self.__wrapped
+        return int(sha1(self.view(uint8)).hexdigest(), 16)
 
 
 if __name__ == "__main__":
