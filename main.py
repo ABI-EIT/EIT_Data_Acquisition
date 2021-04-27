@@ -57,6 +57,8 @@ flow_plot_config = {
     "min_range": 2
 }
 
+
+
 bidirectional_venturi_config = {
     "sensor_orientations": [-1, 1],  # Orientation of pressure sensor. 1 for positive reading from air flow in correct direction through venturi tube
     "Flow1_multiplier": 0.09912976335,
@@ -427,6 +429,13 @@ class SettingsWindow(QtWidgets.QDialog):
         self.form1 = QtWidgets.QFormLayout()
         self.form1.addRow("Row1", QtWidgets.QTextEdit())
         self.form1.addRow("Row2", QtWidgets.QDial())
+
+        lw = QtWidgets.QListWidget()
+        item = QtWidgets.QListWidgetItem("Hello")
+        item.setFlags(item.flags() | QtCore.Qt.ItemIsEditable)
+        lw.addItem(item)
+
+        self.form1.addRow("Row3", lw)
 
         self.tab = QtWidgets.QTabWidget()
         tab1 = QtWidgets.QWidget()
