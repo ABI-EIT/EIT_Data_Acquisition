@@ -5,20 +5,24 @@ import numpy as np
 from scipy import signal
 from scipy import integrate
 from scipy.stats import linregress
+import pathlib
 import matplotlib.pyplot as plt
 from abi_pyeit.quality.plotting import *
 from abi_pyeit.app.eit import *
-import math
 import matplotlib.animation as animation
-from itertools import count
+import math
 from config_lib import Config
+from itertools import count
 
 
-def main():
-    config = Config(config_path, default_config, type="yaml")
-    filename = load_filename(config)
+# # ABI EIT DATA PROCESSING ---------------------------------------------------------------------------------------------
+# # This section contains code that knows about the format of the data we get from the QT app
 
-    dataset_config_filename = list(pathlib.Path(filename).parent.glob(config["dataset_config_glob"]))[0]
+ABI_EIT_time_unit = "s"
+
+
+def read_and_preprocess_data(filename, dataset_config_glob, resample_freq):
+    dataset_config_filename = list(pathlib.Path(filename).parent.glob(dataset_config_glob))[0]
     dataset_config = Config(dataset_config_filename, type="yaml")
 
     # Read data in
@@ -28,7 +32,8 @@ def main():
     data.index = data.index - data.index[0]
 
     # Tidy data. Don't fill Tag column to preserve precise timing
-    data = squash_and_resample(data, resample_freq_hz=config["resample_freq_hz"], freq_column="Pressure1", no_pad_columns=["Tag", "EIT"])
+    data = squash_and_resample(data, resample_freq_hz=resample_freq, freq_column="Pressure1",
+                               no_pad_columns=["Tag", "EIT"])
 
     # Orient
     sensor_orientations = [dataset_config["Flow1_sensor_orientation"], dataset_config["Flow2_sensor_orientation"]]
@@ -39,7 +44,8 @@ def main():
     data[["Pressure1", "Pressure2"]] = data[["Pressure1", "Pressure2"]] - offsets
 
     # Low pass filter pressure data
-    data[["Pressure1_filtered", "Pressure2_filtered"]] = data[["Pressure1", "Pressure2"]].apply(lambda column: filter_data(column, fs=config["resample_freq_hz"]))
+    data[["Pressure1_filtered", "Pressure2_filtered"]] = data[["Pressure1", "Pressure2"]].apply(
+        lambda column: filter_data(column, fs=resample_freq))
 
     # Convert pressure to flow
     multipliers = [dataset_config["Flow1_multiplier"], dataset_config["Flow2_multiplier"]]
@@ -52,101 +58,24 @@ def main():
     # Calculate volume
     data["Volume (L)"] = calculate_volume(data["Flow (L/s)"], x="index_as_seconds")
 
-    # Construct ginput file name based on data file name
-    ginput_name = pathlib.Path(pathlib.Path(filename).stem + "_ginput.json")
-    ginput_path = pathlib.Path(filename).parent / ginput_name
-    data_ginput = Config(ginput_path, type="json")
-
-    # Get ginput for all desired tests, either from user or from file
-    for test in config["tests"]:
-        if test not in data_ginput:
-            points = get_input(data, show_columns=["Volume (L)"], test_name=test)
-            data_ginput[test] = [point[0] for point in points]  # save only times
-            data_ginput.save()
-
-    # Run linearity test
-    lin_out = {}
-    linearity_test(data[["Volume (L)", "EIT"]], test_config=config["tests"]["Test 3"],
-                   test_ginput=data_ginput["Test 3"], eit_config=config["eit_configuration"], dataset_config=dataset_config, out=lin_out)
+    return data, dataset_config
 
 
-    # Plotting ---------------------------------------------------------------------------------------------------------
-    # Plot volume with EIT frames
-    ax = data["Volume (L)"].plot()
-    ax.plot(data["Volume (L)"].where(data["EIT"].notna()).dropna(), "rx")
-    # ax.plot(data["Flow1 (L/s)"])
-    ax.set_title("Expiration volume with EIT frame times")
-    ax.set_ylabel("Volume (L)")
-
-    # Linearity test plots
-    recon_min = np.nanmin(lin_out["df"]["recon_render"].apply(np.nanmin))
-    recon_max = np.nanmax(lin_out["df"]["recon_render"].apply(np.nanmax))
-    fig, ani1 = create_animated_image_plot(lin_out["df"]["recon_render"].values, title="Reconstruction image animation", vmin=recon_min, vmax=recon_max)
-    fig, ani2 = create_animated_image_plot(lin_out["df"]["threshold_image"].values, title="Threshold image animation")
-
-    # # # Save animations
-    # writer_gif = animation.PillowWriter(fps=2, bitrate=2000)
-    # # ani1.save(str(pathlib.Path(filename).parent) + "\\" + "Reconstruction image animation.gif", writer_gif, dpi=1000)
-    # ani2.save(str(pathlib.Path(filename).parent) + "\\" + "Threshold image animation.gif", writer_gif, dpi=1000)
-
-    fig, ax = plt.subplots()
-    ax.plot(lin_out["df"]["Volume delta"], lin_out["df"]["area^1.5_normalized"], ".")
-    ax.plot(lin_out["df"]["Volume delta"], lin_out["df"]["calculated"])
-    ax.text(0.8, 0.1, "R^2 = {0:.4}".format(lin_out["r_squared"]), transform=ax.transAxes)
-    if config["tests"]["Test 3"]["normalize_volume"] == "VC":
-        ax.set_title("Volume delta (normalized to vital capacity) \nvs EIT image area^1.5")
-        ax.set_xlabel("Volume delta normalized to vital capacity")
-        ax.set_ylabel("EIT image area (pixels)^1.5/max_pixels^1.5")
-        ax.figure.tight_layout(pad=1)
-
-    # # Save data
-    # lin_out["df"][["Volume delta", "area^1.5_normalized"]].to_csv(str(pathlib.Path(filename).parent) + "\\" + "eit_vs_volume.csv")
-
-    plt.show()
-
-
-def create_animated_image_plot(images, title, background=np.nan, margin=10, interval=500, repeat_delay=500, **kwargs):
+def parse_flow(data):
     """
-    Create a plot using imshow and set the axis bounds to frame the image
+    Parse the data format of the ABI EIT flow meter.
+    Creates columns Flow1 and Flow2 in the input dataframe
 
     Parameters
     ----------
-    image
-        Image array
-    title
-        Plot title
-    background
-        Value of the background in the image
-    margin
-        Margin to place at the sides of the image
-    origin
-        Origin parameter for imshow
-
-    Returns
-    -------
-    fig, ax
-
+    data: Pandas DataFrame
     """
-    fig, ax = plt.subplots()
-    ims = [[ax.imshow(im.T, **kwargs, animated=True)] for im in images]
-    img_bounds = get_img_bounds(images[0].T, background=background)
-
-    ax.set_ybound(img_bounds[0]-margin, img_bounds[1]+margin)
-    ax.set_xbound(img_bounds[2]-margin, img_bounds[3]+margin)
-    ax.set_title(title)
-
-    fig.colorbar(ims[0][0])
-
-    ani = animation.ArtistAnimation(fig, ims, interval=interval, blit=True, repeat_delay=repeat_delay)
-
-    return fig, ani
-
-
-def get_ith(data, i):
-    if len(data) > i:
-        return data.iloc[i]
-    else:
-        return None
+    if "Flow1" in data.columns:
+        data["Pressure1"] = data["Flow1"]
+        data["Pressure2"] = data["Flow2"]
+    elif "Flow" in data.columns:
+        data["Pressure1"] = pd.to_numeric(data["Flow"].str.split(",", expand=True)[1], errors="coerce")
+        data["Pressure2"] = pd.to_numeric(data["Flow"].str.split(",", expand=True)[2], errors="coerce")
 
 
 def linearity_test(data, test_config, test_ginput, eit_config, dataset_config, out=None):
@@ -228,12 +157,29 @@ def linearity_test(data, test_config, test_ginput, eit_config, dataset_config, o
 
     return test_data
 
+# # -------------------------------------------------------------------------------------------------------------------
+# # -------------------------------------------------------------------------------------------------------------------
+
+
+# # Support code for linearity test -----------------------------------------------------------------------------------
+def get_ith(data, i):
+    """
+    Wrapper for pandas iloc that returns None if index is out of range
+    """
+    if len(data) > i:
+        return data.iloc[i]
+    else:
+        return None
+
+
 def rsquared(x, y):
     """ Return R^2 where x and y are array-like."""
 
     slope, intercept, r_value, p_value, std_err = linregress(x, y)
     return r_value**2
 
+
+# This maybe should be in pyeit?
 def calc_absolute_threshold_set(image, threshold):
     """
 
@@ -261,8 +207,11 @@ def calc_absolute_threshold_set(image, threshold):
             image_set[image >= threshold] = 1
 
     return image_set
+# # --------------------------------------------------------------------------------------------------------------------
+# # --------------------------------------------------------------------------------------------------------------------
 
 
+# # Support code for using ginput to set time points for data analysis--------------------------------------------------
 def get_input(data, show_columns, test_name):
     start, stop = find_last_test_start_and_stop(data["Tag"], test_name)
     if start is None:
@@ -284,8 +233,11 @@ def find_last_test_start_and_stop(data, test_name, start_label="Start", stop_lab
     start = (data[::-1] == (start_label + join + test_name)).idxmax() if (data[::-1] == (start_label + join + test_name)).any() else None
     stop = (data[::-1] == (stop_label + join + test_name)).idxmax() if (data[::-1] == (stop_label + join + test_name)).any() else None
     return start, stop
+# # --------------------------------------------------------------------------------------------------------------------
+# # --------------------------------------------------------------------------------------------------------------------
 
 
+# # Support code for volume calculations -------------------------------------------------------------------------------
 def filter_data(column, fs=1000, fc=50):
     w = fc / (fs / 2)  # Normalize the frequency
     b, a = signal.butter(5, w, 'low')
@@ -404,25 +356,11 @@ def squash_and_resample(data, freq_column=None, resample_freq_hz=1000, output=No
     data = data.resample(pd.to_timedelta(1 / resample_freq_hz, unit="s")).first()
     data[pad_cols] = data[pad_cols].pad()
     return data
+# # --------------------------------------------------------------------------------------------------------------------
+# # --------------------------------------------------------------------------------------------------------------------
 
-
-def parse_flow(data):
-    """
-    Parse the data format of the ABI EIT flow meter.
-    Creates columns Flow1 and Flow2 in the input dataframe
-
-    Parameters
-    ----------
-    data: Pandas DataFrame
-    """
-    if "Flow1" in data.columns:
-        data["Pressure1"] = data["Flow1"]
-        data["Pressure2"] = data["Flow2"]
-    elif "Flow" in data.columns:
-        data["Pressure1"] = pd.to_numeric(data["Flow"].str.split(",", expand=True)[1], errors="coerce")
-        data["Pressure2"] = pd.to_numeric(data["Flow"].str.split(",", expand=True)[2], errors="coerce")
-
-
+# # Function to get a filename by asking the user.
+# Maybe this should be in the config lib
 def load_filename(config, remember_directory=True):
     """
     Finds a filename by asking the user through a Tk file select dialog.
@@ -458,34 +396,40 @@ def load_filename(config, remember_directory=True):
     return filename
 
 
-# Default configurations -----------------------------------------------------
-# Don't change these to configure a single test! Change settings in the config file!
-configuration_directory = "configuration/"
-config_file = "config.yaml"
-config_path = configuration_directory + config_file
-default_config = {
-    "initial_dir": "",
-    "dataset_config_glob": "Subject Information.yaml",
-    "tests": {
-        "Test 3": {"hold": "10s", "analysis_max": -1, "normalize_volume": "VC"}
-    },
-    "eit_configuration": {
-        "mesh_filename": "mesh/mesha06_bumpychestslice.stl",
-        "n_electrodes": 16,
-        "dist": 3,
-        # Recon:
-        "p": 0.5,
-        "lamb": 0.4,
-        "method": "kotre",
-        # Electrode placement:
-        "chest_and_spine_ratio": 2,
-        # Analysis:
-        "image_threshold_proportion": .15
-    },
-    "resample_freq_hz": 1000
-}
+# # Create an animated image plot
+# Maybe this should be in the pyeit plotting functions
+def create_animated_image_plot(images, title, background=np.nan, margin=10, interval=500, repeat_delay=500, **kwargs):
+    """
+    Create a plot using imshow and set the axis bounds to frame the image
 
-ABI_EIT_time_unit = "s"
+    Parameters
+    ----------
+    image
+        Image array
+    title
+        Plot title
+    background
+        Value of the background in the image
+    margin
+        Margin to place at the sides of the image
+    origin
+        Origin parameter for imshow
 
-if __name__ == "__main__":
-    main()
+    Returns
+    -------
+    fig, ax
+
+    """
+    fig, ax = plt.subplots()
+    ims = [[ax.imshow(im.T, **kwargs, animated=True)] for im in images]
+    img_bounds = get_img_bounds(images[0].T, background=background)
+
+    ax.set_ybound(img_bounds[0]-margin, img_bounds[1]+margin)
+    ax.set_xbound(img_bounds[2]-margin, img_bounds[3]+margin)
+    ax.set_title(title)
+
+    fig.colorbar(ims[0][0])
+
+    ani = animation.ArtistAnimation(fig, ims, interval=interval, blit=True, repeat_delay=repeat_delay)
+
+    return fig, ani
