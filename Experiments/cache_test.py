@@ -31,33 +31,35 @@ def loop(cached=False):
     foos = []
     for i in range(100):
         if cached:
-            foos.append(cached_create_foo(arr))
+            foos.append(str_hashed_create(Foo, arr))
         else:
             foos.append(Foo(arr))
 
     return foos
 
 
-class HashableArrayContainer:
-    def __init__(self, array):
-        self.array = array
+class StrHashingContainer:
+    def __init__(self, object):
+        self.object = object
 
     def __eq__(self, other):
-        return all(self.array == other.array)
+        return str(self.object) == str(other.object)
 
     def __hash__(self):
-        return int(sha1(self.array.view(uint8)).hexdigest(), 16)
+        return hash(str(self.object))
 
 
-def cached_create_foo(array):
-    hashable_array_container = HashableArrayContainer(array)
-    create_foo_with_hashables(hashable_array_container)
+def str_hashed_create(type, *args, **kwargs):
+    hashed_args = [StrHashingContainer(arg) for arg in args]
+    hashed_kwargs = {key: StrHashingContainer(val) for key, val in kwargs.items()}
+    create_with_str_hashables(type, *hashed_args, **hashed_kwargs)
 
 
 @lru_cache
-def create_foo_with_hashables(hashable_array_container):
-    arr = hashable_array_container.array
-    foo = Foo(arr)
+def create_with_str_hashables(type, *args, **kwargs):
+    unhashed_args = [arg.object for arg in args]
+    unhashed_kwargs = {key: val.object for key, val in kwargs.items()}
+    foo = type(*unhashed_args, **unhashed_kwargs)
     return foo
 
 
