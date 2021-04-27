@@ -52,7 +52,7 @@ class StrHashingContainer:
 def str_hashed_create(type, *args, **kwargs):
     hashed_args = [StrHashingContainer(arg) for arg in args]
     hashed_kwargs = {key: StrHashingContainer(val) for key, val in kwargs.items()}
-    create_with_str_hashables(type, *hashed_args, **hashed_kwargs)
+    return create_with_str_hashables(type, *hashed_args, **hashed_kwargs)
 
 
 @lru_cache

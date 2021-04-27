@@ -126,7 +126,7 @@ def main():
                 lin_out = {}
                 linearity_test(data[["Volume (L)", "EIT"]], test_config=test_configurations["linearity"],
                                test_ginput=data_ginput["Test 3"], eit_config=single_eit_config,
-                               dataset_config=dataset_config, out=lin_out)
+                               dataset_config=dataset_config, out=lin_out, cache_pyeit_obj=True)
 
                 directory_results["linearity"] = lin_out
 

@@ -14,6 +14,7 @@ import matplotlib.animation as animation
 import math
 from config_lib import Config
 from itertools import count
+from functools import lru_cache, wraps
 
 
 # # ABI EIT DATA PROCESSING ---------------------------------------------------------------------------------------------
@@ -78,8 +79,32 @@ def parse_flow(data):
         data["Pressure1"] = pd.to_numeric(data["Flow"].str.split(",", expand=True)[1], errors="coerce")
         data["Pressure2"] = pd.to_numeric(data["Flow"].str.split(",", expand=True)[2], errors="coerce")
 
+class StrHashingContainer:
+    def __init__(self, object):
+        self.object = object
 
-def linearity_test(data, test_config, test_ginput, eit_config, dataset_config, out=None, pyeit_obj=None):
+    def __eq__(self, other):
+        return str(self.object) == str(other.object)
+
+    def __hash__(self):
+        return hash(str(self.object))
+
+
+def str_hashed_create(type, *args, **kwargs):
+    hashed_args = [StrHashingContainer(arg) for arg in args]
+    hashed_kwargs = {key: StrHashingContainer(val) for key, val in kwargs.items()}
+    return create_with_str_hashables(type, *hashed_args, **hashed_kwargs)
+
+
+@lru_cache
+def create_with_str_hashables(type, *args, **kwargs):
+    unhashed_args = [arg.object for arg in args]
+    unhashed_kwargs = {key: val.object for key, val in kwargs.items()}
+    foo = type(*unhashed_args, **unhashed_kwargs)
+    return foo
+
+
+def linearity_test(data, test_config, test_ginput, eit_config, dataset_config, out=None, cache_pyeit_obj=True):
 
     if out is None:
         out = {}
@@ -117,7 +142,10 @@ def linearity_test(data, test_config, test_ginput, eit_config, dataset_config, o
     electrode_nodes = place_electrodes_equal_spacing(mesh, n_electrodes=eit_config["n_electrodes"], starting_angle=math.pi)
 
     ex_mat = eit_scan_lines(eit_config["n_electrodes"], eit_config["dist"])
-    pyeit_obj = pyeit_obj if pyeit_obj is not None else JAC(mesh, np.array(electrode_nodes), ex_mat, step=1, perm=1)
+    if not cache_pyeit_obj:
+        pyeit_obj = JAC(mesh, np.array(electrode_nodes), ex_mat, step=1, perm=1)
+    else:
+        pyeit_obj = str_hashed_create(JAC, mesh, np.array(electrode_nodes), ex_mat, step=1, perm=1)
     pyeit_obj.setup(p=eit_config["p"], lamb=eit_config["lamb"], method=eit_config["method"])
 
     # Solve EIT data
