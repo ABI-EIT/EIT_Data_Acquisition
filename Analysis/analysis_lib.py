@@ -1,5 +1,6 @@
 from tkinter import Tk
 from tkinter.filedialog import askopenfilename
+from tkinter.filedialog import askdirectory
 import pandas as pd
 import numpy as np
 from scipy import signal
@@ -78,7 +79,7 @@ def parse_flow(data):
         data["Pressure2"] = pd.to_numeric(data["Flow"].str.split(",", expand=True)[2], errors="coerce")
 
 
-def linearity_test(data, test_config, test_ginput, eit_config, dataset_config, out=None):
+def linearity_test(data, test_config, test_ginput, eit_config, dataset_config, out=None, pyeit_obj=None):
 
     if out is None:
         out = {}
@@ -116,7 +117,7 @@ def linearity_test(data, test_config, test_ginput, eit_config, dataset_config, o
     electrode_nodes = place_electrodes_equal_spacing(mesh, n_electrodes=eit_config["n_electrodes"], starting_angle=math.pi)
 
     ex_mat = eit_scan_lines(eit_config["n_electrodes"], eit_config["dist"])
-    pyeit_obj = JAC(mesh, np.array(electrode_nodes), ex_mat, step=1, perm=1)
+    pyeit_obj = pyeit_obj if pyeit_obj is not None else JAC(mesh, np.array(electrode_nodes), ex_mat, step=1, perm=1)
     pyeit_obj.setup(p=eit_config["p"], lamb=eit_config["lamb"], method=eit_config["method"])
 
     # Solve EIT data
@@ -382,18 +383,67 @@ def load_filename(config, remember_directory=True):
     else:
         Tk().withdraw()  # we don't want a full GUI, so keep the root window from appearing
         try:
-            filename = askopenfilename(initialdir=config["initial_dir"], title="Select data file")
+            if "initial_dir" in config:
+                filename = askopenfilename(initialdir=config["initial_dir"], title="Select data file")
+            else:
+                filename = askopenfilename(title="Select data file")
         except FileNotFoundError:
             print("You have to choose a file!")
             raise
 
+        if filename == "" or filename == ():
+            print("You have to choose a file!")
+            exit(1)
+
     if remember_directory:
         directory = str(pathlib.Path(filename).parent)
-        if directory != config["initial_dir"]:
+        if "initial_dir" not in config or directory != config["initial_dir"]:
             config["initial_dir"] = directory
             config.save()
 
     return filename
+
+# # Function to get a directory by asking the user.
+# Maybe this should be in the config lib
+def load_directory(config, remember_directory=True):
+    """
+    Finds a directory by asking the user through a Tk file select dialog.
+    If remember_directory is set to True, the directory is remembered for next time
+    If the directory key exists in the input config, this is used instead of the dialog
+
+    Parameters
+    ----------
+    config
+    remember_directory
+
+    Returns
+    -------
+    filename
+
+    """
+    if "directory" in config:
+        directory = config["directory"]  # Secret option to not get dialog
+    else:
+        Tk().withdraw()  # we don't want a full GUI, so keep the root window from appearing
+        try:
+            if "initial_dir" in config:
+                directory = askdirectory(initialdir=config["initial_dir"], title="Select a directory")
+            else:
+                directory = askdirectory(title="Select a directory")
+        except FileNotFoundError:
+            print("You have to choose a directory!")
+            raise
+
+        if directory == "" or directory == ():
+            print("You have to choose a directory!")
+            exit(1)
+
+    if remember_directory:
+        if "initial_dir" not in config or directory != config["initial_dir"]:
+            config["initial_dir"] = directory
+            config.save()
+
+    return directory
 
 
 # # Create an animated image plot

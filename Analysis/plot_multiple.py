@@ -8,13 +8,15 @@ files = [
     r"C:\Users\acre018\The University of Auckland\ABI MBIE EIT Project - General\Healthy Volunteer Studies\Data\Subject 5 - LS1\eit_vs_volume.csv",
     r"C:\Users\acre018\The University of Auckland\ABI MBIE EIT Project - General\Healthy Volunteer Studies\Data\Subject 6 - SR3\eit_vs_volume.csv",
     r"C:\Users\acre018\The University of Auckland\ABI MBIE EIT Project - General\Healthy Volunteer Studies\Data\Subject 8 - MW1\eit_vs_volume.csv",
+    r"C:\Users\acre018\The University of Auckland\ABI MBIE EIT Project - General\Healthy Volunteer Studies\Data\Subject 9 - HR1\eit_vs_volume.csv"
 ]
 codes = [
     "JB1",
     "AC2",
     "LS1",
     "SR3",
-    "MW1"
+    "MW1",
+    "HR1"
 ]
 
 dfs = [pd.read_csv(file, index_col=0) for file in files]
