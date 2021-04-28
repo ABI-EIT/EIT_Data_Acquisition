@@ -141,9 +141,10 @@ class Producer(Worker):
 
 
 class Consumer(Worker):
-    def __init__(self, work_timeout=5, max_buffer_size=1):
+    def __init__(self, work_timeout=5, max_buffer_size=1, lossy_queue=False, *args, **kwargs):
         super().__init__()
-        self.work_queues = [ReadyQueue()]
+        maxsize = kwargs.pop("maxsize", 0)
+        self.work_queues = [ReadyQueue(lossy=lossy_queue, maxsize=maxsize)]
 
         # work_timeout is the time to wait between work and the timeout for queue.get
         self.work_timeout = work_timeout
@@ -208,8 +209,11 @@ class Consumer(Worker):
         self.state.value = Worker.stop_at_queue_end
 
 
+# https://stackoverflow.com/questions/66591320/python-multiprocessing-queue-child-class-losing-attributes-in-process/66607658#66607658
+# There is an issue with making child classes from multiprocessing.queues.queue. This is a workaround
 class ReadyQueue:
     def __init__(self, *args, **kwargs):
+        self.lossy = kwargs.pop("lossy", False)
         self.queue = Queue(*args, **kwargs)
         self._ready = Value(ctypes.c_bool, False)
 
@@ -234,6 +238,8 @@ class ReadyQueue:
         return self.queue.get(block, timeout)
 
     def put(self, obj, block=True, timeout=None):
+        if self.lossy and self.full():
+            self.get()
         return self.queue.put(obj, block, timeout)
 
     def full(self):
@@ -244,3 +250,4 @@ class ReadyQueue:
 
     def qsize(self):
         return self.queue.qsize()
+

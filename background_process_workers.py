@@ -260,8 +260,8 @@ class BidirectionalVenturiFlowCalculator(Consumer, QtCore.QObject):
 class EITProcessor(Consumer, QtCore.QObject):
     new_data = QtCore.pyqtSignal(tuple)
 
-    def __init__(self):
-        Consumer.__init__(self)
+    def __init__(self, *args, **kwargs):
+        Consumer.__init__(self, lossy_queue=True, maxsize=1, *args, **kwargs)
         QtCore.QObject.__init__(self)
         man = Manager()
         self.bg_dict = man.dict()
