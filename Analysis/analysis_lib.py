@@ -79,29 +79,56 @@ def parse_flow(data):
         data["Pressure1"] = pd.to_numeric(data["Flow"].str.split(",", expand=True)[1], errors="coerce")
         data["Pressure2"] = pd.to_numeric(data["Flow"].str.split(",", expand=True)[2], errors="coerce")
 
-class StrHashingContainer:
-    def __init__(self, object):
+
+def cached_caller(callable, hashable_transform=str, *args, **kwargs):
+    """
+    A function to wrap the arguments of a callable into hashable containers, then run the callable with lru_cache turned on.
+    The hashable transform is a callable used to transform the args and kwargs into a form that implements the __hash__()
+    and __eq__() methods.
+
+    TODO: Add ability to control the size of the lru_cache
+    TODO: Add ability to specify a different hashable transform for each arg and kwarg
+
+    Parameters
+    ----------
+    callable: callable to call with lru_cache
+    hashable_transform: callable. default is str. Another option is pickle.dumps. If None is passed, the arguments must
+                        already be hashable
+    args: args for callable
+    kwargs: kwargs for callable
+
+    Returns
+    -------
+    result of callable
+
+    """
+    if hashable_transform is not None:
+        hashable_args = [HashableContainer(arg, hashable_transform) for arg in args]
+        hashable_kwargs = {key: HashableContainer(val, hashable_transform) for key, val in kwargs.items()}
+    else:
+        hashable_args = args
+        hashable_kwargs = kwargs
+    return _call_with_hashables(callable, *hashable_args, **hashable_kwargs)
+
+
+class HashableContainer:
+    def __init__(self, object, hashable_transform):
         self.object = object
+        self.hash_trans = hashable_transform
 
     def __eq__(self, other):
-        return str(self.object) == str(other.object)
+        return self.hash_trans(self.object) == self.hash_trans(other.object)
 
     def __hash__(self):
-        return hash(str(self.object))
-
-
-def str_hashed_create(type, *args, **kwargs):
-    hashed_args = [StrHashingContainer(arg) for arg in args]
-    hashed_kwargs = {key: StrHashingContainer(val) for key, val in kwargs.items()}
-    return create_with_str_hashables(type, *hashed_args, **hashed_kwargs)
+        return hash(self.hash_trans(self.object))
 
 
 @lru_cache
-def create_with_str_hashables(type, *args, **kwargs):
-    unhashed_args = [arg.object for arg in args]
-    unhashed_kwargs = {key: val.object for key, val in kwargs.items()}
-    foo = type(*unhashed_args, **unhashed_kwargs)
-    return foo
+def _call_with_hashables(wrapped, *hashable_args, **hashable_kwargs):
+    original_args = [arg.object for arg in hashable_args]
+    original_kwargs = {key: val.object for key, val in hashable_kwargs.items()}
+    result = wrapped(*original_args, **original_kwargs)
+    return result
 
 
 def linearity_test(data, test_config, test_ginput, eit_config, dataset_config, out=None, cache_pyeit_obj=True):
@@ -145,7 +172,7 @@ def linearity_test(data, test_config, test_ginput, eit_config, dataset_config, o
     if not cache_pyeit_obj:
         pyeit_obj = JAC(mesh, np.array(electrode_nodes), ex_mat, step=1, perm=1)
     else:
-        pyeit_obj = str_hashed_create(JAC, mesh, np.array(electrode_nodes), ex_mat, step=1, perm=1)
+        pyeit_obj = cached_caller(JAC, str, mesh, np.array(electrode_nodes), ex_mat, step=1, perm=1)
     pyeit_obj.setup(p=eit_config["p"], lamb=eit_config["lamb"], method=eit_config["method"])
 
     # Solve EIT data
