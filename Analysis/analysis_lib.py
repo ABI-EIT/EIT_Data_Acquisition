@@ -10,6 +10,7 @@ import pathlib
 import matplotlib.pyplot as plt
 from abi_pyeit.quality.plotting import *
 from abi_pyeit.app.eit import *
+from abi_pyeit.mesh.wrapper import  *
 import matplotlib.animation as animation
 import math
 from config_lib import Config
@@ -167,7 +168,12 @@ def linearity_test(data, test_config, test_ginput, eit_config, dataset_config, o
     mesh = load_stl(eit_config["mesh_filename"])
     image = model_inverse_uv(mesh, resolution=(1000, 1000))
     place_e_output = {}
-    electrode_nodes = place_electrodes_equal_spacing(mesh, n_electrodes=eit_config["n_electrodes"], starting_angle=eit_config["starting_angle"], counter_clockwise=eit_config["counter_clockwise"], output_obj=place_e_output)
+
+    if eit_config["electrode_placement"] == "equal_spacing_with_chest_and_spine_gap":
+        electrode_nodes = place_electrodes_equal_spacing(mesh, n_electrodes=eit_config["n_electrodes"], starting_angle=eit_config["starting_angle"], counter_clockwise=eit_config["counter_clockwise"], output_obj=place_e_output)
+    elif eit_config["electrode_placement"] == "lidar":
+        electrode_points = pd.read_csv(eit_config["electrode_points_file"], index_col=0)
+        electrode_nodes = map_points_to_perimeter(mesh, points=np.array(electrode_points), map_to_nodes=True)
 
     ex_mat = eit_scan_lines(eit_config["n_electrodes"], eit_config["dist"])
     if not cache_pyeit_obj:

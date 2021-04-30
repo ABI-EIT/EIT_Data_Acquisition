@@ -89,6 +89,7 @@ default_config = {
         "lamb": 0.4,
         "method": "kotre",
         # Electrode placement:
+        "electrode_placement": "equal_spacing_with_chest_and_spine_gap",
         "chest_and_spine_ratio": 2,
         "starting_angle": 0,
         "counter_clockwise": True,
@@ -97,6 +98,8 @@ default_config = {
     },
     "resample_freq_hz": 1000
 }
+
+
 
 
 if __name__ == "__main__":
