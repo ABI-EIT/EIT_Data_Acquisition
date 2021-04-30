@@ -29,6 +29,7 @@ class Config:
                 else:
                     self.config = json.load(f)
 
+            # TODO: Search for keys in nested dicts too
             for key, default_value in self.default_config.items():
                 resave = False
                 if key not in self.config:

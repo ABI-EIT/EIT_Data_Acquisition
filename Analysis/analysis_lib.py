@@ -166,7 +166,8 @@ def linearity_test(data, test_config, test_ginput, eit_config, dataset_config, o
     # Process EIT ------------------------------------------------------------------------------------------------------
     mesh = load_stl(eit_config["mesh_filename"])
     image = model_inverse_uv(mesh, resolution=(1000, 1000))
-    electrode_nodes = place_electrodes_equal_spacing(mesh, n_electrodes=eit_config["n_electrodes"], starting_angle=math.pi)
+    place_e_output = {}
+    electrode_nodes = place_electrodes_equal_spacing(mesh, n_electrodes=eit_config["n_electrodes"], starting_angle=eit_config["starting_angle"], counter_clockwise=eit_config["counter_clockwise"], output_obj=place_e_output)
 
     ex_mat = eit_scan_lines(eit_config["n_electrodes"], eit_config["dist"])
     if not cache_pyeit_obj:
@@ -210,6 +211,9 @@ def linearity_test(data, test_config, test_ginput, eit_config, dataset_config, o
 
     out["df"] = test_data
     out["r_squared"] = r_squared
+    out["mesh"] = mesh
+    out["electrode_nodes"] = electrode_nodes
+    out["place_electrodes"] = place_e_output
 
     return test_data
 

@@ -1,6 +1,7 @@
 from Analysis.analysis_lib import *
 import matplotlib.pyplot as plt
 from abi_pyeit.app.eit import *
+from abi_pyeit.quality.plotting import *
 import math
 import matplotlib.animation as animation
 from config_lib import Config
@@ -31,8 +32,11 @@ def main():
 
 
     # Plotting ---------------------------------------------------------------------------------------------------------
+    fig, ax = create_mesh_plot(lin_out["mesh"], lin_out["electrode_nodes"], plot_electrodes=True)
+
     # Plot volume with EIT frames
-    ax = data["Volume (L)"].plot()
+    fig, ax = plt.subplots()
+    data["Volume (L)"].plot(ax=ax)
     ax.plot(data["Volume (L)"].where(data["EIT"].notna()).dropna(), "rx")
     # ax.plot(data["Flow1 (L/s)"])
     ax.set_title("Expiration volume with EIT frame times")
@@ -41,8 +45,8 @@ def main():
     # Linearity test plots
     recon_min = np.nanmin(lin_out["df"]["recon_render"].apply(np.nanmin))
     recon_max = np.nanmax(lin_out["df"]["recon_render"].apply(np.nanmax))
-    fig, ani1 = create_animated_image_plot(lin_out["df"]["recon_render"].values, title="Reconstruction image animation", vmin=recon_min, vmax=recon_max)
-    fig, ani2 = create_animated_image_plot(lin_out["df"]["threshold_image"].values, title="Threshold image animation")
+    fig, ani1 = create_animated_image_plot(lin_out["df"]["recon_render"].values, title="Reconstruction image animation", vmin=recon_min, vmax=recon_max, origin="lower")
+    fig, ani2 = create_animated_image_plot(lin_out["df"]["threshold_image"].values, title="Threshold image animation", origin="lower")
 
     # # # Save animations
     # writer_gif = animation.PillowWriter(fps=2, bitrate=2000)
@@ -86,6 +90,8 @@ default_config = {
         "method": "kotre",
         # Electrode placement:
         "chest_and_spine_ratio": 2,
+        "starting_angle": 0,
+        "counter_clockwise": True,
         # Analysis:
         "image_threshold_proportion": .15
     },
