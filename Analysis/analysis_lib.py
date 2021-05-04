@@ -174,6 +174,8 @@ def linearity_test(data, test_config, test_ginput, eit_config, dataset_config, o
     elif eit_config["electrode_placement"] == "lidar":
         electrode_points = pd.read_csv(eit_config["electrode_points_file"], index_col=0)
         electrode_nodes = map_points_to_perimeter(mesh, points=np.array(electrode_points), map_to_nodes=True)
+    else:
+        raise ValueError("Invalid entry for the \"electrode_placement\" field")
 
     ex_mat = eit_scan_lines(eit_config["n_electrodes"], eit_config["dist"])
     if not cache_pyeit_obj:

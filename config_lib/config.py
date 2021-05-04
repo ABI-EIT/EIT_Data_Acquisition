@@ -40,6 +40,7 @@ class Config:
                     self.save()
         else:
             self.config = self.default_config
+            self.save()
 
     def save(self):
         pathlib.Path(self.path).parent.mkdir(parents=True, exist_ok=True)
