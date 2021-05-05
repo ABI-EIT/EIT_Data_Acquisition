@@ -135,7 +135,7 @@ class Producer(Worker):
 
     @staticmethod
     @abstractmethod
-    def work(on_start_results, state, message_pipe, *args):
+    def work(shared_var, state, message_pipe, *args):
         # Gets called in loop. Use self.set_stopped() to stop
         pass
 
@@ -198,7 +198,7 @@ class Consumer(Worker):
 
     @staticmethod
     @abstractmethod
-    def work(items, on_start_results, state, message_pipe, *args):
+    def work(items, shared_var, state, message_pipe, *args):
         # Gets called in loop. Use self.set_stopped() to stop
         pass
 

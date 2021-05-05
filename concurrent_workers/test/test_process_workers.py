@@ -18,7 +18,7 @@ class MyTestProducer(Producer):
         self.message = None
 
     @staticmethod
-    def work(on_start_results, state, message_pipe, *args):
+    def work(shared_var, state, message_pipe, *args):
         pass
 
     @staticmethod

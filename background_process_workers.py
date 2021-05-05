@@ -114,7 +114,7 @@ class QueueEmitter(Consumer, QtCore.QObject):
         QtCore.QObject.__init__(self)
 
     @staticmethod
-    def work(items, on_start_results, state, message_pipe, *args, **kwargs):
+    def work(items, shared_var, state, message_pipe, *args, **kwargs):
         return [item for item in items if item is not None]
 
     def on_result_ready(self, results):
