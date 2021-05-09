@@ -16,6 +16,7 @@ import math
 from config_lib import Config
 from itertools import count
 from functools import lru_cache, wraps
+import re
 
 
 # # ABI EIT DATA PROCESSING ---------------------------------------------------------------------------------------------
@@ -163,16 +164,23 @@ def linearity_test(data, test_config, test_ginput, eit_config, dataset_config, o
     if test_config["analysis_max"] > 0:
         test_data = test_data[test_data["Volume delta"] <= test_config["analysis_max"]]
 
-
     # Process EIT ------------------------------------------------------------------------------------------------------
     mesh = load_stl(eit_config["mesh_filename"])
-    image = model_inverse_uv(mesh, resolution=(1000, 1000))
-    place_e_output = {}
+    bounds = [
+        (np.min(mesh["node"][:, 0]), np.min(mesh["node"][:, 1])),
+        (np.max(mesh["node"][:, 0]), np.max(mesh["node"][:, 1]))
+    ]
+    image = model_inverse_uv(mesh, resolution=(1000, 1000), bounds=bounds)
 
+    if eit_config["mask_filename"] is not None:
+        mask_mesh = load_stl(eit_config["mask_filename"])
+        image = model_inverse_uv(mask_mesh, resolution=(1000, 1000), bounds=bounds)
+
+    place_e_output = {}
     if eit_config["electrode_placement"] == "equal_spacing_with_chest_and_spine_gap":
         electrode_nodes = place_electrodes_equal_spacing(mesh, n_electrodes=eit_config["n_electrodes"], starting_angle=eit_config["starting_angle"], counter_clockwise=eit_config["counter_clockwise"], output_obj=place_e_output)
     elif eit_config["electrode_placement"] == "lidar":
-        electrode_points = pd.read_csv(eit_config["electrode_points_file"], index_col=0)
+        electrode_points = pd.read_csv(eit_config["electrode_points_filename"], index_col=0)
         electrode_nodes = map_points_to_perimeter(mesh, points=np.array(electrode_points), map_to_nodes=True)
     else:
         raise ValueError("Invalid entry for the \"electrode_placement\" field")
@@ -512,6 +520,33 @@ def load_directory(config, remember_directory=True):
 
     return directory
 
+def parse_relative_paths(input_dict, alternate_working_directory, awd_indicator="alternate", path_tag="filename", wd_tag="_wd"):
+    """
+    Modify paths in an input dict to make them relative to an alternate working directory if indicated.
+
+    Parameters
+    ----------
+    input_dict
+    alternate_working_directory
+    awd_indicator
+    path_tag
+    wd_tag
+
+    Returns
+    -------
+
+    """
+    for key, value in input_dict.items():
+        # check if key indicates that this is a path
+        if re.match(".*(?:" + path_tag + "$)", key) is not None:
+            # check if the dict contains an instruction to modify the identified path
+            if key + wd_tag in input_dict:
+                # if the instruction is awd_indicator, we prepend the alternate working directory to the path
+                if input_dict[key + wd_tag] == awd_indicator:
+                    input_dict[key] = alternate_working_directory + "/" + input_dict[key]
+                # else we just assume prepend whatever we see
+                else:
+                    input_dict[key] = input_dict[key + wd_tag] + "/" + input_dict[key]
 
 # # Create an animated image plot
 # Maybe this should be in the pyeit plotting functions

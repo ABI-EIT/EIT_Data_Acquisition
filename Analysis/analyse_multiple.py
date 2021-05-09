@@ -32,7 +32,7 @@ config_constants = {
     ]
 }
 
-config_variables = {
+base_config_variables = {
     "eit_configuration": {
         "chest_and_spine_ratio": 2,
         "dist": 3,
@@ -42,7 +42,8 @@ config_variables = {
         "n_electrodes": 16,
         "p": 0.5,
         "starting_angle": 0,
-        "counter_clockwise": True
+        "counter_clockwise": True,
+        "mask_filename": None
     },
     "test_configurations": {
         "linearity": {
@@ -55,40 +56,42 @@ config_variables = {
 
 # run_tests = ["drift", "linearity"]
 run_tests = ["linearity"]
-config_variable_updates = [
+config_variable_modifiers = [
     {
         "name": "Generic Chest",
         "eit_configuration": {
             "mesh_filename": "mesh/mesha06_bumpychestslice_flipped.stl",
-            "electrode_placement": "equal_spacing_with_chest_and_spine_gap",
-            "mask": "none"
+            "electrode_placement": "equal_spacing_with_chest_and_spine_gap"
         }
     },
     {
         "name": "Oval Chest",
         "eit_configuration": {
             "mesh_filename": "mesh/oval_chest_3.stl",
-            "electrode_placement": "equal_spacing_with_chest_and_spine_gap",
-            "mask": "none"
+            "electrode_placement": "equal_spacing_with_chest_and_spine_gap"
         }
     }
     # ,
     # {
-    #     "mesh": "generic_chest",
-    #     "electrode_placement": "subject_lidar",
-    #     #But where do we apply this mapping?
-    #     "electrode_placement_file_relative_path": "data_directory",
-    #     "electrode_placement_file_name": "electrode_points.csv"
+    #     "name": "Subject Lidar Chest",
+    #     "eit_configuration": {
+    #         "mesh_directory": "subject_data",
+    #         "mesh_filename": "Lidar_mesh",
+    #     },
     # },
     # {
-    #     "mesh": "subject_lidar"
+    #     "name": "Subject Lidar Electrodes",
+    #     "eit_configuration": {
+    #         "electrode_directory": "subject_data",
+    #         "electrode_filename": "Lidar_electrodes"
+    #     },
     # },
     # {
-    #     "mesh": "subject_pca"
-    # },
-    # {
-    #     "mesh": "generic_chest",
-    #     "mask": "generic_lungs"
+    #     "name": "PCA Lungs",
+    #     "eit_configuration": {
+    #         "mask_directory": "subject_data",
+    #         "mask_filename": "PCA_lungs"
+    #     },
     # }
 ]
 
@@ -102,19 +105,16 @@ def main():
 
     # Build configs
     config_variables_list = []
-    for update in config_variable_updates:
+    for update in config_variable_modifiers:
 
         directories_config_dict = {}
         for directory in directories:
-            cv = deepcopy(config_variables)
+            cv = deepcopy(base_config_variables)
             merge_or_raise.merge(cv, update)
 
-            # Parse filenames here
-            # For each variable that uses a filename
-            #   If the relative flag is set
-            #       filename = directory + filename
-            #   Else
-            #       filename is unchanged
+            for item in cv:
+                if isinstance(item, dict):
+                    parse_relative_paths(input_dict=item, alternate_working_directory=directory, awd_indicator="data_directory", path_tag="filename", wd_tag="_wd")
 
             directories_config_dict[directory] = cv
 
@@ -148,10 +148,12 @@ def main():
 
     # Run each test configuration on all data
     results = []
-    for directories_config_dict in tqdm(config_variables_list, desc="Analysis configurations"):
+    # Using a manual tqdm here instead of two nested bars since there is an unresolved bug in tqdm nested bars
+    t = tqdm(range(len(config_variables_list)*len(directories_config_dict)), desc="Analysing data")
+    for directories_config_dict in config_variables_list:
 
         single_config_results = {}
-        for directory, cv in tqdm(directories_config_dict.items(), desc="Data sets"):
+        for directory, cv in directories_config_dict.items():
             directory_results = {}
 
             dataset_information = dataset_information_dict[str(directory)]
@@ -172,7 +174,9 @@ def main():
                 pass
 
             single_config_results[str(directory)] = directory_results
+            t.update()
         results.append(single_config_results)
+    t.close()
 
     for i, result in enumerate(results):
         dfs = [item[1]["linearity"]["df"] for item in list(result.items())]
@@ -183,10 +187,10 @@ def main():
 
         ax.set_ylabel("EIT area^1.5 normalized")
         ax.set_xlabel("Volume delta normalized")
-        ax.set_title(f"EIT vs Volume delta for {len(cc['codes'])} subjects, {config_variable_updates[i]['name']}")
+        ax.set_title(f"EIT vs Volume delta for {len(cc['codes'])} subjects, {config_variable_modifiers[i]['name']}")
 
         r2s = [item[1]["linearity"]["r_squared"] for item in list(result.items())]
-        print(f"Mean r squared for configuration {config_variable_updates[i]['name']}: {np.average(r2s):.4f}")
+        print(f"Mean r squared for configuration {config_variable_modifiers[i]['name']}: {np.average(r2s):.4f}")
 
     plt.show()
 
