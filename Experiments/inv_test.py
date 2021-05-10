@@ -2,17 +2,16 @@ import numpy as np
 from numpy.linalg import inv
 import time
 
-iterations = 100
+iterations = 1
+n = 1000
 
 invstart = time.time()
-np.random.seed(0)
-a = np.random.random((500,500))
+a = np.linspace(0, 1,  n*n).reshape(n, n)
 ainv = [inv(a) for _ in range(iterations)]
 invend = time.time()
 
 mulstart = time.time()
-np.random.seed(0)
-a = np.random.random((500,500))
+a = np.linspace(0, 1, n*n).reshape(n, n)
 amul = [np.matmul(a, a) for _ in range(iterations)]
 mulend = time.time()
 
