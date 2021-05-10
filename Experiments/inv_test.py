@@ -16,5 +16,5 @@ a = np.random.random((500,500))
 amul = [np.matmul(a, a) for _ in range(iterations)]
 mulend = time.time()
 
-print(f'inv took {invend-invstart:.2f} seconds')
-print(f'mul took {mulend-mulstart:.2f} seconds')
+print(f'inv took {invend-invstart:.2f} seconds\n' +
+      f'mul took {mulend-mulstart:.2f} seconds')
