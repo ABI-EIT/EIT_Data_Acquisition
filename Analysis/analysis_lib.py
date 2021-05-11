@@ -178,9 +178,10 @@ def linearity_test(data, test_config, test_ginput, eit_config, dataset_config, o
 
     place_e_output = {}
     if eit_config["electrode_placement"] == "equal_spacing_with_chest_and_spine_gap":
-        electrode_nodes = place_electrodes_equal_spacing(mesh, n_electrodes=eit_config["n_electrodes"], starting_angle=eit_config["starting_angle"], counter_clockwise=eit_config["counter_clockwise"], output_obj=place_e_output)
+        electrode_nodes = place_electrodes_equal_spacing(mesh, n_electrodes=eit_config["n_electrodes"], starting_angle=eit_config["starting_angle"], counter_clockwise=eit_config["counter_clockwise"],
+                                                         chest_and_spine_ratio=eit_config["chest_and_spine_ratio"], output_obj=place_e_output)
     elif eit_config["electrode_placement"] == "lidar":
-        electrode_points = pd.read_csv(eit_config["electrode_points_filename"], index_col=0)
+        electrode_points = pd.read_csv(eit_config["electrode_points_filename"], header=None)
         electrode_nodes = map_points_to_perimeter(mesh, points=np.array(electrode_points), map_to_nodes=True)
     else:
         raise ValueError("Invalid entry for the \"electrode_placement\" field")

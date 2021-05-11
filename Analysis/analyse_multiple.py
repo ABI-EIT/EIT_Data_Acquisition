@@ -57,18 +57,28 @@ base_config_variables = {
 # run_tests = ["drift", "linearity"]
 run_tests = ["linearity"]
 config_variable_modifiers = [
+    # {
+    #     "name": "Generic Chest",
+    #     "eit_configuration": {
+    #         "mesh_filename": "mesh/mesha06_bumpychestslice_flipped.stl",
+    #         "electrode_placement": "equal_spacing_with_chest_and_spine_gap"
+    #     }
+    # },
     {
-        "name": "Generic Chest",
-        "eit_configuration": {
-            "mesh_filename": "mesh/mesha06_bumpychestslice_flipped.stl",
-            "electrode_placement": "equal_spacing_with_chest_and_spine_gap"
-        }
-    },
-    {
-        "name": "Oval Chest",
+        "name": "Oval Chest, Generic Electrodes",
         "eit_configuration": {
             "mesh_filename": "mesh/oval_chest_3.stl",
             "electrode_placement": "equal_spacing_with_chest_and_spine_gap"
+        }
+    }
+    ,
+    {
+        "name": "Oval Chest, Lidar Electrodes",
+        "eit_configuration": {
+            "mesh_filename": "mesh/oval_chest_3.stl",
+            "electrode_placement": "lidar",
+            "electrode_points_filename_wd": "data_directory",
+            "electrode_points_filename": "centroids.csv"
         }
     }
     # ,
@@ -112,9 +122,9 @@ def main():
             cv = deepcopy(base_config_variables)
             merge_or_raise.merge(cv, update)
 
-            for item in cv:
-                if isinstance(item, dict):
-                    parse_relative_paths(input_dict=item, alternate_working_directory=directory, awd_indicator="data_directory", path_tag="filename", wd_tag="_wd")
+            for key in cv:
+                if isinstance(cv[key], dict):
+                    parse_relative_paths(input_dict=cv[key], alternate_working_directory=str(directory), awd_indicator="data_directory", path_tag="filename", wd_tag="_wd")
 
             directories_config_dict[directory] = cv
 
