@@ -2,7 +2,6 @@ from PyQt5 import QtCore
 from concurrent_workers import Producer, Consumer
 from multiprocessing import Manager
 import matplotlib.tri as tri
-import pyvisa
 import threading
 from abi_pyeit.app.eit import load_oeit_data, load_conf, parse_oeit_line, process_frame
 import os

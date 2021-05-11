@@ -95,7 +95,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.comboBoxFlow1.currentTextChanged.connect(lambda text: self.change_flow_device(text))
 
         self.flow_reader.set_subscribers([self.volume_calc.get_work_queue(), self.data_saver.get_work_queue()])
-        self.volume_calc.start_new(on_start_args=(bidirectional_venturi_config,))
+        self.volume_calc.start_new(work_kwargs={"configuration": bidirectional_venturi_config})
 
         self.volume_calc.new_data.connect(lambda items: self.new_volume_calc_data(items))
         self.zeroVolumeButton.clicked.connect(self.volume_calc.set_zero)
@@ -114,7 +114,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.stopRecordingButton.setVisible(True)
         self.startRecordingButton.setVisible(False)
 
-        self.data_saver.start_new(on_start_args=(suffix, data_saving_configuration))
+        self.data_saver.start_new(work_args=(suffix, data_saving_configuration))
 
         self.comboBoxFlow1.setEnabled(False)
         self.dataFileSuffixTextEdit.setEnabled(False)
@@ -179,7 +179,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.flow_combo_box.setCurrentIndex(-1)
 
     def change_flow_device(self, text):
-        self.flow_reader.start_new(on_start_args=(text, flow_configuration))
+        self.flow_reader.start_new(work_kwargs={"device_name": text, "configuration": flow_configuration})
 
         for i, axes in enumerate(self.flow_plot_axes):
             if axes is None:
