@@ -3,19 +3,19 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy import integrate
 from scipy import signal
-import time
+import matplotlib.dates as mdates
 
 # file_name = "data/2021-04-20T15_03_flow_a_in_b_out_cal_f1_redo.csv"
 file_name = "data/2021-04-20T14_52_flow_a_in_b_out_cal_f1_verification.csv"
 # file_name = "data/2021-04-20T14_53_flow_a_in_b_out_cal_f2.csv"
-file_name = "data/2021-04-20T14_56_flow_a_in_b_out_cal_f2_verification.csv"
+# file_name = "data/2021-04-20T14_56_flow_a_in_b_out_cal_f2_verification.csv"
 
 
 cols = ["Time", "Flow"]
 
 trigger = 0.1
 delta_trigger = 0.5
-reference_volume = -1
+reference_volume = 1
 
 config = {
     "sensor_orientations": [-1, 1],  # Orientation of pressure sensor. 1 for positive reading from air flow in correct direction through venturi tube
@@ -23,8 +23,8 @@ config = {
     "Flow2_multiplier": -0.09640041172,
     "Pressure1_offset": 0.007,
     "Pressure2_offset": -0.028,
-    # "Flow1_multiplier": 0,
-    # "Flow2_multiplier": 0,
+    # "Flow1_multiplier": .1,
+    # "Flow2_multiplier": -.1,
     # "Pressure1_offset": 0,
     # "Pressure2_offset": 0,
     "flow_threshold": 0.02,
@@ -112,8 +112,16 @@ def main():
     data["Volume"] = integrate.cumtrapz(data["Flow"], x=data.index.astype(np.int64) / 10 ** 9,
                                           initial=0)
 
-    ax = data[["Pressure1_filtered", "Pressure2_filtered", "Flow", "Volume"]].plot()
-    ax.set_title("Measured flow (L/s) and calculated volume (L) vs time")
+    # ax = data[["Pressure1_filtered", "Pressure2_filtered", "Flow", "Volume"]].plot(secondary_y=["Volume", "Flow"])
+    ax = data[["Flow", "Volume"]].plot(x_compat=True)  # Need x_compat to make date formatter work
+    ax.set_title("Flow (L/s) and Volume (L) vs time")
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%M:%S"))
+
+
+    # # Align zero points of two y axes
+    # ratio = ax.get_ylim()[1]/ax.get_ylim()[0]
+    # new_alt_y_max = ax.figure.axes[1].get_ylim()[0]*ratio
+    # ax.figure.axes[1].set_ylim(None, new_alt_y_max)
 
     # -----------------------------------------------------------------------------------------------------
 
@@ -124,10 +132,10 @@ def main():
     data_deltas = data[data["ups"]].apply(
         lambda row: delta_to_next(row, data["Flow"], data["Volume"]), axis=1)
 
-    for item in data_deltas.iteritems():
-        if item[1] != np.NaN and np.abs(item[1]) >= delta_trigger:
-            ax.axvline(item[0], color="red")
-            ax.axvline(data_deltas.loc[item[0]:].index[0], color="red")
+    # for item in data_deltas.iteritems():
+    #     if item[1] != np.NaN and np.abs(item[1]) >= delta_trigger:
+    #         ax.axvline(item[0], color="red")
+    #         ax.axvline(data_deltas.loc[item[0]:].index[0], color="gray")
 
     data_deltas = data_deltas.dropna()
     data_deltas = data_deltas[data_deltas.abs() >= delta_trigger]
