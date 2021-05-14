@@ -21,15 +21,7 @@ config_constants = {
     },
     "flow_configuration": {
         "resample_freq_hz": 1000
-    },
-    "codes": [
-        "JB2",
-        "AC2",
-        "LS1",
-        "SR3",
-        "MW1",
-        "HR1"
-    ]
+    }
 }
 
 base_config_variables = {
@@ -71,16 +63,16 @@ config_variable_modifiers = [
             "electrode_placement": "equal_spacing_with_chest_and_spine_gap"
         }
     }
-    ,
-    {
-        "name": "Oval Chest, Lidar Electrodes",
-        "eit_configuration": {
-            "mesh_filename": "mesh/oval_chest_3.stl",
-            "electrode_placement": "lidar",
-            "electrode_points_filename_wd": "data_directory",
-            "electrode_points_filename": "centroids.csv"
-        }
-    }
+    # ,
+    # {
+    #     "name": "Oval Chest, Lidar Electrodes",
+    #     "eit_configuration": {
+    #         "mesh_filename": "mesh/oval_chest_3.stl",
+    #         "electrode_placement": "lidar",
+    #         "electrode_points_filename_wd": "data_directory",
+    #         "electrode_points_filename": "centroids.csv"
+    #     }
+    # }
     # ,
     # {
     #     "name": "Subject Lidar Chest",
@@ -188,16 +180,18 @@ def main():
         results.append(single_config_results)
     t.close()
 
+    dirnames = [pathlib.Path(path).name for path in list(results[0])]
+
     for i, result in enumerate(results):
         dfs = [item[1]["linearity"]["df"] for item in list(result.items())]
 
         fig, ax = plt.subplots()
         for j, df in enumerate(dfs):
-            df.plot(x="Volume delta", y="area^1.5_normalized", label=cc["codes"][j], ax=ax)
+            df.plot(x="Volume delta", y="area^1.5_normalized", label=dirnames[j], ax=ax)
 
         ax.set_ylabel("EIT area^1.5 normalized")
         ax.set_xlabel("Volume delta normalized")
-        ax.set_title(f"EIT vs Volume delta for {len(cc['codes'])} subjects, {config_variable_modifiers[i]['name']}")
+        ax.set_title(f"EIT vs Volume delta for {len(dirnames)} subjects, {config_variable_modifiers[i]['name']}")
 
         r2s = [item[1]["linearity"]["r_squared"] for item in list(result.items())]
         print(f"Mean r squared for configuration {config_variable_modifiers[i]['name']}: {np.average(r2s):.4f}")

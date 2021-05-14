@@ -114,8 +114,10 @@ def main():
 
     # ax = data[["Pressure1_filtered", "Pressure2_filtered", "Flow", "Volume"]].plot(secondary_y=["Volume", "Flow"])
     ax = data[["Flow", "Volume"]].plot(x_compat=True)  # Need x_compat to make date formatter work
-    ax.set_title("Flow (L/s) and Volume (L) vs time")
+    ax.set_title("Flow (L/s) and Volume (L) vs Time")
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%M:%S"))
+    ax.set_xlabel("Time (M:S)")
+    ax.set_ylabel("Flow (L/s) and Volume (L)")
 
 
     # # Align zero points of two y axes
@@ -142,13 +144,16 @@ def main():
 
     df = pd.DataFrame(columns=["diffs"], data=data_deltas.values, index=reference_volume*np.array(range(1, 11)))
     df["cumsum"] = np.cumsum(data_deltas.values)
-    d = np.polyfit(df.index, df["cumsum"], 1)
+    sstot = np.sum(np.power(df["cumsum"] - df["cumsum"].mean(), 2))
+    d, ssres, _, _, _ = np.polyfit(df.index, df["cumsum"], 1, full=True)
+    rsquared = 1 - (ssres[0] / sstot)
     f = np.poly1d(d)
     df["calculated"] = f(df.index)
     fig, ax = plt.subplots()
     ax.plot(df.index, df["cumsum"], ".")
     ax.plot(df.index, df["calculated"])
     ax.set_title("Cumulative measured volume (L) vs linear fit")
+    ax.text(7, 2, r'$r^2$' + f' = {rsquared:.8f}')
     print("Intercept: " + str(f[0]))
     print("Slope: " + str(f[1]))
     df["resid"] = df["calculated"]-df["cumsum"]
@@ -156,17 +161,21 @@ def main():
     full_scale = np.abs(df.index).max()
     print("Max residual: %.2f%% of full scale" % ((max_resid/full_scale)*100))
     df["error_unadjusted"] = df["cumsum"]-df.index
+    df["error_unadjusted_pct"] = (df["error_unadjusted"]/df.index) * 100
+    max_unadj_pct_of_meas = df["error_unadjusted_pct"].abs().max()
     max_unadj = df["error_unadjusted"].abs().max()
-    print("Max unadjusted error: %.2f%% of full scale" % ((max_unadj/full_scale)*100))
+    # print("Max unadjusted error: %.2f%% of full scale" % ((max_unadj/full_scale)*100))
+    print(f"Max unadjusted error: {max_unadj_pct_of_meas:.2f}% of measurement")
 
     fig, ax = plt.subplots()
 
     ax.plot(df.index, df["cumsum"], ".")
     ax.plot(df.index, df.index)
-    ax.set_title("Calibrated measured volume (L) vs reference volume (L)")
-    ax.legend(["Measured volume (L)", "Reference volume (L)"])
-    ax.set_xlabel("Reference volume (L)")
+    ax.set_title("Calibrated Measured Volume (L) vs Reference Volume (L)")
+    ax.legend(["Measured Volume (L)", "Reference Volume (L)"])
+    ax.set_xlabel("Reference Volume (L)")
     ax.set_ylabel("Volume (L)")
+
 
 
 if __name__ == "__main__":
