@@ -187,7 +187,7 @@ def main():
 
         fig, ax = plt.subplots()
         for j, df in enumerate(dfs):
-            df.plot(x="Volume delta", y="area^1.5_normalized", label=dirnames[j], ax=ax)
+            df.plot(x="Volume delta", y="area^1.5_normalized", label=dirnames[j].split(" - ")[0], ax=ax)
 
         ax.set_ylabel("EIT area^1.5 normalized")
         ax.set_xlabel("Volume delta normalized")
@@ -195,6 +195,8 @@ def main():
 
         r2s = [item[1]["linearity"]["r_squared"] for item in list(result.items())]
         print(f"Mean r squared for configuration {config_variable_modifiers[i]['name']}: {np.average(r2s):.4f}")
+
+        ax.text(0.3, 0.05, r'Mean $r^2$' + f' = {np.average(r2s):.4f}')
 
     plt.show()
 
