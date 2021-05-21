@@ -64,31 +64,34 @@ config_variable_modifiers = [
         }
     }
     ,
-    # {
-    #     "name": "Oval Chest, Lidar Electrodes",
-    #     "eit_configuration": {
-    #         "mesh_filename": "mesh/oval_chest_3.stl",
-    #         "electrode_placement": "lidar",
-    #         "electrode_points_filename_wd": "data_directory",
-    #         "electrode_points_filename": "centroids.csv"
-    #     }
-    # }
-    # ,
     {
-        "name": "Subject Lidar Chest",
+        "name": "Oval Chest, Lidar Electrodes",
+        "eit_configuration": {
+            "mesh_filename": "mesh/oval_chest_3.stl",
+            "electrode_placement": "lidar",
+            "electrode_points_filename_wd": "data_directory",
+            "electrode_points_filename": "centroids.csv"
+        }
+    }
+    ,
+    {
+        "name": "Subject Lidar Chest, Generic Electrodes",
         "eit_configuration": {
             "electrode_placement": "equal_spacing_with_chest_and_spine_gap",
             "mesh_filename_wd": "data_directory",
             "mesh_filename": "Lidar Mesh.STL",
         },
     },
-    # {
-    #     "name": "Subject Lidar Electrodes",
-    #     "eit_configuration": {
-    #         "electrode_directory": "subject_data",
-    #         "electrode_filename": "Lidar_electrodes"
-    #     },
-    # },
+    {
+        "name": "Subject Lidar Chest, Subject Lidar Electrodes",
+        "eit_configuration": {
+            "electrode_placement": "lidar",
+            "electrode_points_filename_wd": "data_directory",
+            "electrode_points_filename": "centroids.csv",
+            "mesh_filename_wd": "data_directory",
+            "mesh_filename": "Lidar Mesh.STL",
+        },
+    },
     # {
     #     "name": "PCA Lungs",
     #     "eit_configuration": {
