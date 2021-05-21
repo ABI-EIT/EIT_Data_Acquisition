@@ -63,7 +63,7 @@ config_variable_modifiers = [
             "electrode_placement": "equal_spacing_with_chest_and_spine_gap"
         }
     }
-    # ,
+    ,
     # {
     #     "name": "Oval Chest, Lidar Electrodes",
     #     "eit_configuration": {
@@ -74,13 +74,14 @@ config_variable_modifiers = [
     #     }
     # }
     # ,
-    # {
-    #     "name": "Subject Lidar Chest",
-    #     "eit_configuration": {
-    #         "mesh_directory": "subject_data",
-    #         "mesh_filename": "Lidar_mesh",
-    #     },
-    # },
+    {
+        "name": "Subject Lidar Chest",
+        "eit_configuration": {
+            "electrode_placement": "equal_spacing_with_chest_and_spine_gap",
+            "mesh_filename_wd": "data_directory",
+            "mesh_filename": "Lidar Mesh.STL",
+        },
+    },
     # {
     #     "name": "Subject Lidar Electrodes",
     #     "eit_configuration": {
@@ -193,8 +194,9 @@ def main():
         ax.set_xlabel("Volume delta normalized")
         ax.set_title(f"EIT vs Volume delta for {len(dirnames)} subjects, {config_variable_modifiers[i]['name']}")
 
-        r2s = [item[1]["linearity"]["r_squared"] for item in list(result.items())]
+        r2s = [result[key]["linearity"]["r_squared"] for key in result]
         print(f"Mean r squared for configuration {config_variable_modifiers[i]['name']}: {np.average(r2s):.4f}")
+        print(f"r squared values for configuration {config_variable_modifiers[i]['name']}: {r2s}")
 
         ax.text(0.3, 0.05, r'Mean $r^2$' + f' = {np.average(r2s):.4f}')
 
