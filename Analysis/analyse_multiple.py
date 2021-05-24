@@ -4,6 +4,7 @@ from pandas.core.common import flatten
 from tqdm import tqdm
 from deepmerge import merge_or_raise
 from copy import deepcopy
+from scipy import stats
 
 config_constants = {
     "config_file": "configuration/config_multiple.yaml",
@@ -186,6 +187,7 @@ def main():
 
     dirnames = [pathlib.Path(path).name for path in list(results[0])]
 
+    r2s_list = []
     for i, result in enumerate(results):
         dfs = [item[1]["linearity"]["df"] for item in list(result.items())]
 
@@ -198,10 +200,35 @@ def main():
         ax.set_title(f"EIT vs Volume delta for {len(dirnames)} subjects, {config_variable_modifiers[i]['name']}")
 
         r2s = [result[key]["linearity"]["r_squared"] for key in result]
-        print(f"Mean r squared for configuration {config_variable_modifiers[i]['name']}: {np.average(r2s):.4f}")
-        print(f"r squared values for configuration {config_variable_modifiers[i]['name']}: {r2s}")
+        r2s_list.append(r2s)
+        # print(f"Mean r squared for configuration {config_variable_modifiers[i]['name']}: {np.average(r2s):.4f}")
+        # print(f"r squared values for configuration {config_variable_modifiers[i]['name']}: {r2s}")
 
         ax.text(0.3, 0.05, r'Mean $r^2$' + f' = {np.average(r2s):.4f}')
+
+    sems = [stats.sem(r2s) for r2s in r2s_list]
+    ttests = [stats.ttest_ind(r2s_list[0], r2s, equal_var=False) for r2s in r2s_list[1:]]
+    r2means = [np.mean(r2s) for r2s in r2s_list]
+    test_names = [item['name'] for item in config_variable_modifiers]
+
+    fig, ax = plt.subplots()
+    y_pos = np.arange(len(r2means))
+    ax.barh(y_pos, r2means, align="center", xerr=sems)
+    ax.set_yticks(y_pos)
+    ax.invert_yaxis()
+    test_names_linebreak = []
+    for i, name in enumerate(test_names):
+        test_names_linebreak[i] = name.replace(", ", "\n")
+    ax.set_yticklabels(test_names_linebreak)
+    ax.set_xlim(0, 1)
+    ax.set_xlabel(r'Mean $r^2$')
+    ax.set_ylabel("Analysis Conditions")
+    ax.set_title(r'Mean $r^2$ for EIT Area$^{1.5}$ vs Volume Delta' + "\n (Error Bars Show SEM)")
+    fig.tight_layout()
+
+    for i, ttest in enumerate(ttests):
+        print(f"p-value for t-test between {test_names[0]} and {test_names[i+1]} is {ttest.pvalue:.4f}")
+
 
     plt.show()
 
