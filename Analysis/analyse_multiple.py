@@ -186,6 +186,7 @@ def main():
     t.close()
 
     dirnames = [pathlib.Path(path).name for path in list(results[0])]
+    test_names = [list(item.values())[0]['name'] for item in config_variables_list]
 
     r2s_list = []
     for i, result in enumerate(results):
@@ -197,7 +198,7 @@ def main():
 
         ax.set_ylabel("EIT area^1.5 normalized")
         ax.set_xlabel("Volume delta normalized")
-        ax.set_title(f"EIT vs Volume delta for {len(dirnames)} subjects, {config_variable_modifiers[i]['name']}")
+        ax.set_title(f"EIT vs Volume delta for {len(dirnames)} subjects, {test_names[i]}")
 
         r2s = [result[key]["linearity"]["r_squared"] for key in result]
         r2s_list.append(r2s)
@@ -209,7 +210,6 @@ def main():
     sems = [stats.sem(r2s) for r2s in r2s_list]
     ttests = [stats.ttest_ind(r2s_list[0], r2s, equal_var=False) for r2s in r2s_list[1:]]
     r2means = [np.mean(r2s) for r2s in r2s_list]
-    test_names = [item['name'] for item in config_variable_modifiers]
 
     fig, ax = plt.subplots()
     y_pos = np.arange(len(r2means))
@@ -218,7 +218,7 @@ def main():
     ax.invert_yaxis()
     test_names_linebreak = []
     for i, name in enumerate(test_names):
-        test_names_linebreak[i] = name.replace(", ", "\n")
+        test_names_linebreak.append(name.replace(", ", "\n"))
     ax.set_yticklabels(test_names_linebreak)
     ax.set_xlim(0, 1)
     ax.set_xlabel(r'Mean $r^2$')
