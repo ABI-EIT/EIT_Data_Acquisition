@@ -10,14 +10,14 @@ import pathlib
 import matplotlib.pyplot as plt
 from abi_pyeit.quality.plotting import *
 from abi_pyeit.app.eit import *
-from abi_pyeit.mesh.wrapper import  *
+from abi_pyeit.mesh.wrapper import *
 import matplotlib.animation as animation
 import math
 from config_lib import Config
 from itertools import count
 from functools import lru_cache, wraps
 import re
-
+from datetime import datetime
 
 # # ABI EIT DATA PROCESSING ---------------------------------------------------------------------------------------------
 # # This section contains code that knows about the format of the data we get from the QT app
@@ -134,7 +134,6 @@ def _call_with_hashables(wrapped, *hashable_args, **hashable_kwargs):
 
 
 def linearity_test(data, test_config, test_ginput, eit_config, dataset_config, out=None, cache_pyeit_obj=True):
-
     if out is None:
         out = {}
 
@@ -145,11 +144,14 @@ def linearity_test(data, test_config, test_ginput, eit_config, dataset_config, o
     test_data["In end"] = test_data["In"].apply(lambda row: row + hold)
     test_data["In Volume"] = test_data.apply(lambda row: data["Volume (L)"].loc[row["In"]:row["In end"]].mean(), axis=1)
     test_data["Out end"] = test_data["Out"].apply(lambda row: row + hold)
-    test_data["Out Volume"] = test_data.apply(lambda row: data["Volume (L)"].loc[row["Out"]:row["Out end"]].mean(), axis=1)
+    test_data["Out Volume"] = test_data.apply(lambda row: data["Volume (L)"].loc[row["Out"]:row["Out end"]].mean(),
+                                              axis=1)
 
     # get_ith(data,1) gets the second EIT frame in the window. This ensures it is a frame completely scanned during the window
-    test_data["EIT in"] = test_data.apply(lambda row: get_ith(data["EIT"].where(data["EIT"].loc[row["In"]:row["In end"]].notna()).dropna(), 1), axis=1)
-    test_data["EIT out"] = test_data.apply(lambda row: get_ith(data["EIT"].where(data["EIT"].loc[row["Out"]:row["Out end"]].notna()).dropna(), 1), axis=1)
+    test_data["EIT in"] = test_data.apply(
+        lambda row: get_ith(data["EIT"].where(data["EIT"].loc[row["In"]:row["In end"]].notna()).dropna(), 1), axis=1)
+    test_data["EIT out"] = test_data.apply(
+        lambda row: get_ith(data["EIT"].where(data["EIT"].loc[row["Out"]:row["Out end"]].notna()).dropna(), 1), axis=1)
 
     # Calculate volume deltas ------------------------------------------------------------------------------------------
     test_data["Volume delta"] = (test_data["In Volume"] - test_data["Out Volume"]).abs()
@@ -159,7 +161,7 @@ def linearity_test(data, test_config, test_ginput, eit_config, dataset_config, o
 
     if test_config["normalize_volume"] == "VC":
         mean_vc = np.average(dataset_config["VC"])
-        test_data["Volume delta"] = test_data["Volume delta"]/mean_vc
+        test_data["Volume delta"] = test_data["Volume delta"] / mean_vc
 
     if test_config["analysis_max"] > 0:
         test_data = test_data[test_data["Volume delta"] <= test_config["analysis_max"]]
@@ -178,8 +180,11 @@ def linearity_test(data, test_config, test_ginput, eit_config, dataset_config, o
 
     place_e_output = {}
     if eit_config["electrode_placement"] == "equal_spacing_with_chest_and_spine_gap":
-        electrode_nodes = place_electrodes_equal_spacing(mesh, n_electrodes=eit_config["n_electrodes"], starting_angle=eit_config["starting_angle"], counter_clockwise=eit_config["counter_clockwise"],
-                                                         chest_and_spine_ratio=eit_config["chest_and_spine_ratio"], output_obj=place_e_output)
+        electrode_nodes = place_electrodes_equal_spacing(mesh, n_electrodes=eit_config["n_electrodes"],
+                                                         starting_angle=eit_config["starting_angle"],
+                                                         counter_clockwise=eit_config["counter_clockwise"],
+                                                         chest_and_spine_ratio=eit_config["chest_and_spine_ratio"],
+                                                         output_obj=place_e_output)
     elif eit_config["electrode_placement"] == "lidar":
         electrode_points = pd.read_csv(eit_config["electrode_points_filename"], header=None)
         electrode_nodes = map_points_to_perimeter(mesh, points=np.array(electrode_points), map_to_nodes=True)
@@ -195,20 +200,24 @@ def linearity_test(data, test_config, test_ginput, eit_config, dataset_config, o
 
     # Solve EIT data
     test_data["solution"] = test_data.apply(lambda row: np.real(pyeit_obj.solve(v1=parse_oeit_line(row["EIT in"]),
-                                                                                v0=parse_oeit_line(row["EIT out"]))), axis=1)
+                                                                                v0=parse_oeit_line(row["EIT out"]))),
+                                            axis=1)
 
     # Render from solution (mesh + values) to nxn image
     test_data["recon_render"] = test_data.apply(lambda row: map_image(image, np.array(row["solution"])), axis=1)
 
     # Find the point in the rendered image with greatest magnitude (+ or -) so we can threshold on this
     test_data["greatest_magnitude"] = test_data.apply(lambda row: lambda_max(row["recon_render"],
-                                                                             key=lambda val: np.abs(np.nan_to_num(val, nan=0))), axis=1)
+                                                                             key=lambda val: np.abs(
+                                                                                 np.nan_to_num(val, nan=0))), axis=1)
     # Find the max over all frames
     max_all_frames = lambda_max(np.array(test_data["greatest_magnitude"]), key=np.abs)
 
     # Create a threshold image
     test_data["threshold_image"] = test_data.apply(lambda row: calc_absolute_threshold_set(row["recon_render"],
-                                                                                           max_all_frames*eit_config["image_threshold_proportion"]), axis=1)
+                                                                                           max_all_frames * eit_config[
+                                                                                               "image_threshold_proportion"]),
+                                                   axis=1)
 
     # Count pixels in the threshold image
     test_data["reconstructed_area"] = test_data.apply(lambda row: np.count_nonzero(row["threshold_image"] == 1), axis=1)
@@ -218,7 +227,7 @@ def linearity_test(data, test_config, test_ginput, eit_config, dataset_config, o
     # Raise to power of 1.5 to obtain a linear relationship with volume
     test_data["reconstructed_area^1.5"] = test_data["reconstructed_area"].pow(1.5)
 
-    test_data["area^1.5_normalized"] = test_data["reconstructed_area^1.5"]/max_pixels**1.5
+    test_data["area^1.5_normalized"] = test_data["reconstructed_area^1.5"] / max_pixels ** 1.5
 
     # Linear fit -------------------------------------------------------------------------------------------------------
     d = np.polyfit(test_data["Volume delta"], test_data["area^1.5_normalized"], 1)
@@ -233,6 +242,7 @@ def linearity_test(data, test_config, test_ginput, eit_config, dataset_config, o
     out["place_electrodes"] = place_e_output
 
     return test_data
+
 
 # # -------------------------------------------------------------------------------------------------------------------
 # # -------------------------------------------------------------------------------------------------------------------
@@ -253,7 +263,7 @@ def rsquared(x, y):
     """ Return R^2 where x and y are array-like."""
 
     slope, intercept, r_value, p_value, std_err = linregress(x, y)
-    return r_value**2
+    return r_value ** 2
 
 
 # This maybe should be in pyeit?
@@ -284,6 +294,8 @@ def calc_absolute_threshold_set(image, threshold):
             image_set[image >= threshold] = 1
 
     return image_set
+
+
 # # --------------------------------------------------------------------------------------------------------------------
 # # --------------------------------------------------------------------------------------------------------------------
 
@@ -297,7 +309,8 @@ def get_input(data, show_columns, test_name):
         stop = data.index[-1]
 
     ax = data[show_columns][start:stop].plot()
-    ax.text(1.025, 0.985, "Add point: Mouse left\nRemove point: Mouse right\nClose: Mouse middle", transform=ax.transAxes, va="top", bbox=dict(ec=(0, 0, 0), fc=(1, 1, 1)))
+    ax.text(1.025, 0.985, "Add point: Mouse left\nRemove point: Mouse right\nClose: Mouse middle",
+            transform=ax.transAxes, va="top", bbox=dict(ec=(0, 0, 0), fc=(1, 1, 1)))
     ax.set_title("Input for " + test_name)
     ax.figure.tight_layout(pad=1)
     points = plt.ginput(n=-1, timeout=0)
@@ -307,9 +320,13 @@ def get_input(data, show_columns, test_name):
 def find_last_test_start_and_stop(data, test_name, start_label="Start", stop_label="Stop", join=" "):
     # [::-1] with idxmax() means we find the last index. We want the last index of the start and stop tags because the user might have clicked accidentally.
     # We assume the last index was the correct one
-    start = (data[::-1] == (start_label + join + test_name)).idxmax() if (data[::-1] == (start_label + join + test_name)).any() else None
-    stop = (data[::-1] == (stop_label + join + test_name)).idxmax() if (data[::-1] == (stop_label + join + test_name)).any() else None
+    start = (data[::-1] == (start_label + join + test_name)).idxmax() if (
+                data[::-1] == (start_label + join + test_name)).any() else None
+    stop = (data[::-1] == (stop_label + join + test_name)).idxmax() if (
+                data[::-1] == (stop_label + join + test_name)).any() else None
     return start, stop
+
+
 # # --------------------------------------------------------------------------------------------------------------------
 # # --------------------------------------------------------------------------------------------------------------------
 
@@ -344,10 +361,10 @@ def calculate_volume(flow, x=None, dx=0.001, flow_threshold=0.02):
     """
 
     if x == "index_as_seconds":
-        x = flow.index.astype(np.int64)/10**9
+        x = flow.index.astype(np.int64) / 10 ** 9
 
     flow_thresholded = np.where(np.abs(flow) <= flow_threshold, 0, flow)
-    volume = integrate.cumtrapz(flow_thresholded,  x=x, dx=dx, initial=0)
+    volume = integrate.cumtrapz(flow_thresholded, x=x, dx=dx, initial=0)
     return volume
 
 
@@ -405,7 +422,7 @@ def lambda_max(arr, axis=None, key=None, keepdims=False):
 
 
 def venturi_pressure_to_flow(pressure, multiplier):
-    flow = pressure.clip(lower=0).pow(0.5)*multiplier
+    flow = pressure.clip(lower=0).pow(0.5) * multiplier
     return flow
 
 
@@ -418,7 +435,8 @@ def squash_and_resample(data, freq_column=None, resample_freq_hz=1000, output=No
     # Frequency analysis of raw data for our own interest
     if freq_column is None:
         freq_column = data.columns[0]
-    mean_freq = 1/((data[freq_column].dropna().index[-1]/len(data[freq_column].dropna())).value * 1e-9)  # timedelta.value is returned in nanoseconds
+    mean_freq = 1 / ((data[freq_column].dropna().index[-1] / len(
+        data[freq_column].dropna())).value * 1e-9)  # timedelta.value is returned in nanoseconds
     if output is not None:
         time_deltas = [*data.index[1:], np.NaN] - data.index
         output["mean_freq"] = mean_freq
@@ -433,12 +451,14 @@ def squash_and_resample(data, freq_column=None, resample_freq_hz=1000, output=No
     data = data.resample(pd.to_timedelta(1 / resample_freq_hz, unit="s")).first()
     data[pad_cols] = data[pad_cols].pad()
     return data
+
+
 # # --------------------------------------------------------------------------------------------------------------------
 # # --------------------------------------------------------------------------------------------------------------------
 
 # # Function to get a filename by asking the user.
 # Maybe this should be in the config lib
-def load_filename(config, remember_directory=True):
+def load_filename(config=None, remember_directory=True):
     """
     Finds a filename by asking the user through a Tk file select dialog.
     If remember_directory is set to True, the directory is remembered for next time
@@ -454,12 +474,12 @@ def load_filename(config, remember_directory=True):
     filename
 
     """
-    if "filename" in config:
+    if config is not None and "filename" in config:
         filename = config["filename"]  # Secret option to not get dialog
     else:
         Tk().withdraw()  # we don't want a full GUI, so keep the root window from appearing
         try:
-            if "initial_dir" in config:
+            if config is not None and "initial_dir" in config:
                 filename = askopenfilename(initialdir=config["initial_dir"], title="Select data file")
             else:
                 filename = askopenfilename(title="Select data file")
@@ -471,7 +491,7 @@ def load_filename(config, remember_directory=True):
             print("You have to choose a file!")
             exit(1)
 
-    if remember_directory:
+    if config is not None and remember_directory:
         directory = str(pathlib.Path(filename).parent)
         if "initial_dir" not in config or directory != config["initial_dir"]:
             config["initial_dir"] = directory
@@ -479,9 +499,10 @@ def load_filename(config, remember_directory=True):
 
     return filename
 
+
 # # Function to get a directory by asking the user.
 # Maybe this should be in the config lib
-def load_directory(config, remember_directory=True):
+def get_directory(config, key="directory", remember_directory=True):
     """
     Finds a directory by asking the user through a Tk file select dialog.
     If remember_directory is set to True, the directory is remembered for next time
@@ -490,6 +511,7 @@ def load_directory(config, remember_directory=True):
     Parameters
     ----------
     config
+    key
     remember_directory
 
     Returns
@@ -497,13 +519,13 @@ def load_directory(config, remember_directory=True):
     filename
 
     """
-    if "directory" in config:
-        directory = config["directory"]  # Secret option to not get dialog
+    if key in config:
+        directory = config[key]  # Secret option to not get dialog
     else:
         Tk().withdraw()  # we don't want a full GUI, so keep the root window from appearing
         try:
-            if "initial_dir" in config:
-                directory = askdirectory(initialdir=config["initial_dir"], title="Select a directory")
+            if f"initial_{key}" in config:
+                directory = askdirectory(initialdir=config[f"initial_{key}"], title="Select a directory")
             else:
                 directory = askdirectory(title="Select a directory")
         except FileNotFoundError:
@@ -515,13 +537,15 @@ def load_directory(config, remember_directory=True):
             exit(1)
 
     if remember_directory:
-        if "initial_dir" not in config or directory != config["initial_dir"]:
-            config["initial_dir"] = directory
+        if f"initial_{key}" not in config or directory != config[f"initial_{key}"]:
+            config[f"initial_{key}"] = directory
             config.save()
 
     return directory
 
-def parse_relative_paths(input_dict, alternate_working_directory, awd_indicator="alternate", path_tag="filename", wd_tag="_wd"):
+
+def parse_relative_paths(input_dict, alternate_working_directory, awd_indicator="alternate", path_tag="filename",
+                         wd_tag="_wd"):
     """
     Modify paths in an input dict to make them relative to an alternate working directory if indicated.
 
@@ -548,6 +572,7 @@ def parse_relative_paths(input_dict, alternate_working_directory, awd_indicator=
                 # else we just assume prepend whatever we see
                 else:
                     input_dict[key] = input_dict[key + wd_tag] + "/" + input_dict[key]
+
 
 # # Create an animated image plot
 # Maybe this should be in the pyeit plotting functions
@@ -577,8 +602,8 @@ def create_animated_image_plot(images, title, background=np.nan, margin=10, inte
     ims = [[ax.imshow(im.T, **kwargs, animated=True)] for im in images]
     img_bounds = get_img_bounds(images[0].T, background=background)
 
-    ax.set_ybound(img_bounds[0]-margin, img_bounds[1]+margin)
-    ax.set_xbound(img_bounds[2]-margin, img_bounds[3]+margin)
+    ax.set_ybound(img_bounds[0] - margin, img_bounds[1] + margin)
+    ax.set_xbound(img_bounds[2] - margin, img_bounds[3] + margin)
     ax.set_title(title)
 
     fig.colorbar(ims[0][0])
@@ -586,3 +611,24 @@ def create_animated_image_plot(images, title, background=np.nan, margin=10, inte
     ani = animation.ArtistAnimation(fig, ims, interval=interval, blit=True, repeat_delay=repeat_delay)
 
     return fig, ani
+
+
+def create_unique_timestamped_file_name(directory=".", date_format="%Y-%m-%dT%H_%M", prefix="", suffix="", extension=""):
+    if not os.path.exists(directory):
+        os.mkdir(directory)
+
+    if prefix != "":
+        prefix = prefix + "_"
+    if suffix != "":
+        suffix = "_" + suffix
+
+    file_name = prefix + datetime.now().strftime(date_format) + suffix
+
+    addition = ""
+    i = 0
+    while True:
+        try_name = directory + "/" + file_name + addition + extension
+        if not(os.path.exists(try_name)):
+            return try_name
+        i += 1
+        addition = "_" + str(i)

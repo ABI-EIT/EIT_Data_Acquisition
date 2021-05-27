@@ -78,7 +78,7 @@ configuration_directory = "configuration/"
 config_file = "config_single.yaml"
 config_path = configuration_directory + config_file
 default_config = {
-    "initial_dir": "",
+    "initial_directory": "",
     "dataset_config_glob": "Subject Information.yaml",
     "tests": {
         "Test 3": {"hold": "10s", "analysis_max": -1, "normalize_volume": "VC"}
