@@ -2,6 +2,8 @@ import yaml
 import json
 import os
 import pathlib
+from deepmerge import conservative_merger
+from copy import deepcopy
 
 
 class Config:
@@ -29,15 +31,12 @@ class Config:
                 else:
                     self.config = json.load(f)
 
-            # TODO: Search for keys in nested dicts too
-            for key, default_value in self.default_config.items():
-                resave = False
-                if key not in self.config:
-                    resave = True
-                    self.config[key] = default_value
+            # Add keys from default config, only if they are not present in config already
+            d = deepcopy(self.config)
+            conservative_merger.merge(self.config, self.default_config)
+            if self.config != d:
+                self.save()
 
-                if resave:
-                    self.save()
         else:
             self.config = self.default_config
             self.save()
@@ -49,7 +48,7 @@ class Config:
             if self.type == "yaml":
                 yaml.safe_dump(self.config, f, width=1000)
             else:
-                json.dump(self.config, f)
+                json.dump(self.config, f, indent=4)
 
     def __getitem__(self, key):
         return self.config[key]

@@ -4,90 +4,19 @@ from pandas.core.common import flatten
 from tqdm import tqdm
 from deepmerge import merge_or_raise
 from copy import deepcopy
-from scipy import stats
-
-base_config_variables = {
-    "eit_configuration": {
-        "chest_and_spine_ratio": 2,
-        "dist": 3,
-        "image_threshold_proportion": 0.15,
-        "lamb": 0.4,
-        "method": "kotre",
-        "n_electrodes": 16,
-        "p": 0.5,
-        "starting_angle": 0,
-        "counter_clockwise": True,
-        "mask_filename": None
-    },
-    "test_configurations": {
-        "linearity": {
-            "analysis_max": -1,
-            "hold": "10s",
-            "normalize_volume": "VC"
-        }
-    }
-}
-
-
-config_variable_modifiers = [
-    # {
-    #     "name": "Generic Chest",
-    #     "eit_configuration": {
-    #         "mesh_filename": "mesh/mesha06_bumpychestslice_flipped.stl",
-    #         "electrode_placement": "equal_spacing_with_chest_and_spine_gap"
-    #     }
-    # },
-    {
-        "name": "Oval Chest, Generic Electrodes",
-        "eit_configuration": {
-            "mesh_filename": "mesh/oval_chest_3.stl",
-            "electrode_placement": "equal_spacing_with_chest_and_spine_gap"
-        }
-    }
-    ,
-    {
-        "name": "Oval Chest, Lidar Electrodes",
-        "eit_configuration": {
-            "mesh_filename": "mesh/oval_chest_3.stl",
-            "electrode_placement": "lidar",
-            "electrode_points_filename_wd": "data_directory",
-            "electrode_points_filename": "centroids.csv"
-        }
-    }
-    ,
-    {
-        "name": "Subject Lidar Chest, Generic Electrodes",
-        "eit_configuration": {
-            "electrode_placement": "equal_spacing_with_chest_and_spine_gap",
-            "mesh_filename_wd": "data_directory",
-            "mesh_filename": "Lidar Mesh.STL",
-        },
-    },
-    {
-        "name": "Subject Lidar Chest, Subject Lidar Electrodes",
-        "eit_configuration": {
-            "electrode_placement": "lidar",
-            "electrode_points_filename_wd": "data_directory",
-            "electrode_points_filename": "centroids.csv",
-            "mesh_filename_wd": "data_directory",
-            "mesh_filename": "Lidar Mesh.STL",
-        },
-    },
-    # {
-    #     "name": "PCA Lungs",
-    #     "eit_configuration": {
-    #         "mask_directory": "subject_data",
-    #         "mask_filename": "PCA_lungs"
-    #     },
-    # }
-]
 
 
 def main():
-
+    # Load config files -----------------------------------------------------------------------------------------------
     config_constants = Config(config_file, default_config_constants, type="yaml")
     parent_directory = get_directory(config_constants, key="parent_directory")
     data_directories = list(pathlib.Path(parent_directory).glob(config_constants["subject_directory_glob"]))
+
+    config_variables = Config(config_variables_file, {"base_config_variables": default_base_config_variables,
+                                                      "config_variable_modifiers": default_config_variable_modifiers})
+
+    base_config_variables = config_variables["base_config_variables"]
+    config_variable_modifiers = config_variables["config_variable_modifiers"]
 
     # Build configs ---------------------------------------------------------------------------------------------------
     # For each analysis configuration, add a config for each directory.
@@ -183,6 +112,81 @@ default_config_constants = {
     # run_tests: ["drift", "linearity"]
     "run_tests": ["linearity"]
 }
+
+config_variables_file = "configuration/config_multiple_variables.json"
+default_base_config_variables = {
+    "eit_configuration": {
+        "chest_and_spine_ratio": 2,
+        "dist": 3,
+        "image_threshold_proportion": 0.15,
+        "lamb": 0.4,
+        "method": "kotre",
+        "n_electrodes": 16,
+        "p": 0.5,
+        "starting_angle": 0,
+        "counter_clockwise": True,
+        "mask_filename": None
+    },
+    "test_configurations": {
+        "linearity": {
+            "analysis_max": -1,
+            "hold": "10s",
+            "normalize_volume": "VC"
+        }
+    }
+}
+default_config_variable_modifiers = [
+    # {
+    #     "name": "Generic Chest",
+    #     "eit_configuration": {
+    #         "mesh_filename": "mesh/mesha06_bumpychestslice_flipped.stl",
+    #         "electrode_placement": "equal_spacing_with_chest_and_spine_gap"
+    #     }
+    # },
+    {
+        "name": "Oval Chest, Generic Electrodes",
+        "eit_configuration": {
+            "mesh_filename": "mesh/oval_chest_3.stl",
+            "electrode_placement": "equal_spacing_with_chest_and_spine_gap"
+        }
+    }
+    ,
+    {
+        "name": "Oval Chest, Lidar Electrodes",
+        "eit_configuration": {
+            "mesh_filename": "mesh/oval_chest_3.stl",
+            "electrode_placement": "lidar",
+            "electrode_points_filename_wd": "data_directory",
+            "electrode_points_filename": "centroids.csv"
+        }
+    }
+    ,
+    {
+        "name": "Subject Lidar Chest, Generic Electrodes",
+        "eit_configuration": {
+            "electrode_placement": "equal_spacing_with_chest_and_spine_gap",
+            "mesh_filename_wd": "data_directory",
+            "mesh_filename": "Lidar Mesh.STL",
+        },
+    },
+    {
+        "name": "Subject Lidar Chest, Subject Lidar Electrodes",
+        "eit_configuration": {
+            "electrode_placement": "lidar",
+            "electrode_points_filename_wd": "data_directory",
+            "electrode_points_filename": "centroids.csv",
+            "mesh_filename_wd": "data_directory",
+            "mesh_filename": "Lidar Mesh.STL",
+        },
+    },
+    # {
+    #     "name": "PCA Lungs",
+    #     "eit_configuration": {
+    #         "mask_directory": "subject_data",
+    #         "mask_filename": "PCA_lungs"
+    #     },
+    # }
+]
 
 if __name__ == "__main__":
     main()
