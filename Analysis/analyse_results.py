@@ -33,7 +33,7 @@ def main():
                 df.plot(x="Volume delta", y="area^1.5_normalized", label=dirnames[j].split(" - ")[0], ax=ax)
             ax.set_ylabel("EIT area^1.5 normalized")
             ax.set_xlabel("Volume delta normalized")
-            ax.set_title(f"EIT vs Volume delta for {len(dirnames)} subjects, {test_names[i]}")
+            ax.set_title(f"EIT vs Volume delta for {len(dirnames)} subjects,\n {test_names[i]}")
             r2s = [result[key]["linearity"]["r_squared"] for key in result]
             ax.text(0.3, 0.05, r'Mean $r^2$' + f' = {np.average(r2s):.4f}')
 
@@ -60,6 +60,36 @@ def main():
             print(f"p-value for t-test between {test_names[0]} and {test_names[i + 1]} is {ttest.pvalue:.4f}")
 
         stds = [np.std(r2s) for r2s in r2s_list]
+
+        # Calculate ratios between lidar mesh and oval mesh
+        area_ratios = {}
+        for subject in dirnames:
+            df = results[2][subject]['linearity']['df']
+            lidar_area = np.sum(np.isfinite(df["threshold_image"].iloc[0]))
+
+            df_2 = results[0][subject]['linearity']['df']
+            oval_area = np.sum(np.isfinite(df_2["threshold_image"].iloc[0]))
+            area_ratios[subject] = lidar_area / oval_area
+
+        # Calculate error in electrode placement measured by lidar compared to equal spaced
+        electrode_errors = {}
+        for subject in dirnames:
+            lin_result_eq = results[0][subject]['linearity']
+            centroid_eq = lin_result_eq['place_electrodes']['centroid']
+            electrode_positions_eq = lin_result_eq['mesh']['node'][lin_result_eq['electrode_nodes']] - centroid_eq
+            angles_eq = np.arctan(electrode_positions_eq[:, 0] / electrode_positions_eq[:, 1])
+
+            lin_result_lid = results[1][subject]['linearity']
+            centroid_lid = trimesh.Trimesh(lin_result_lid['mesh']['node'], lin_result_lid['mesh']['element']).centroid
+            electrode_positions_lid = lin_result_lid['mesh']['node'][lin_result_lid['electrode_nodes']] - centroid_lid
+            angles_lid = np.arctan(electrode_positions_lid[:, 0] / electrode_positions_lid[:, 1])
+
+            ers = angles_lid - angles_eq
+            electrode_errors[subject] = float(np.mean(np.abs(ers)))
+
+
+
+
 
     plt.show()
 
