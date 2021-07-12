@@ -2,7 +2,6 @@ import yaml
 import json
 import os
 import pathlib
-from deepmerge import conservative_merger
 from copy import deepcopy
 
 
@@ -30,12 +29,6 @@ class Config:
                     self.config = yaml.safe_load(f)
                 else:
                     self.config = json.load(f)
-
-            # Add keys from default config, only if they are not present in config already
-            d = deepcopy(self.config)
-            conservative_merger.merge(self.config, self.default_config)
-            if self.config != d:
-                self.save()
 
         else:
             self.config = self.default_config
