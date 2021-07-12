@@ -458,7 +458,17 @@ def squash_and_resample(data, freq_column=None, resample_freq_hz=1000, output=No
 
 # # Function to get a filename by asking the user.
 # Maybe this should be in the config lib
-def load_filename(config=None, remember_directory=True):
+def get_filename(config=None, key="data", remember_directory=True):
+    return _get_filename_or_directory(config=config, key=key, which="filename", remember_directory=remember_directory)
+
+
+# # Function to get a directory by asking the user.
+# Maybe this should be in the config lib
+def get_directory(config=None, key="data", remember_directory=True):
+    return _get_filename_or_directory(config=config, key=key, which="directory", remember_directory=remember_directory)
+
+
+def _get_filename_or_directory(config=None, key="data", which="filename", remember_directory=True):
     """
     Finds a filename by asking the user through a Tk file select dialog.
     If remember_directory is set to True, the directory is remembered for next time
@@ -467,81 +477,49 @@ def load_filename(config=None, remember_directory=True):
     Parameters
     ----------
     config
-    remember_directory
-
-    Returns
-    -------
-    filename
-
-    """
-    if config is not None and "filename" in config:
-        filename = config["filename"]  # Secret option to not get dialog
-    else:
-        Tk().withdraw()  # we don't want a full GUI, so keep the root window from appearing
-        try:
-            if config is not None and "initial_dir" in config:
-                filename = askopenfilename(initialdir=config["initial_dir"], title="Select data file")
-            else:
-                filename = askopenfilename(title="Select data file")
-        except FileNotFoundError:
-            print("You have to choose a file!")
-            raise
-
-        if filename == "" or filename == ():
-            print("You have to choose a file!")
-            exit(1)
-
-    if config is not None and remember_directory:
-        directory = str(pathlib.Path(filename).parent)
-        if "initial_dir" not in config or directory != config["initial_dir"]:
-            config["initial_dir"] = directory
-            config.save()
-
-    return filename
-
-
-# # Function to get a directory by asking the user.
-# Maybe this should be in the config lib
-def get_directory(config, key="directory", remember_directory=True):
-    """
-    Finds a directory by asking the user through a Tk file select dialog.
-    If remember_directory is set to True, the directory is remembered for next time
-    If the directory key exists in the input config, this is used instead of the dialog
-
-    Parameters
-    ----------
-    config
     key
+    which
     remember_directory
 
     Returns
     -------
-    filename
+    item
+        config or directory name
 
     """
-    if key in config:
-        directory = config[key]  # Secret option to not get dialog
+    if config is not None and key in config:
+        item = config[key]  # Secret option to not get dialog
     else:
         Tk().withdraw()  # we don't want a full GUI, so keep the root window from appearing
         try:
-            if f"initial_{key}" in config:
-                directory = askdirectory(initialdir=config[f"initial_{key}"], title="Select a directory")
+            initial_dir = None
+            if config is not None and f"initial_{key}_directory" in config:
+                initial_dir = config[f"initial_{key}_directory"]
+
+            if which == "filename":
+                item = askopenfilename(initialdir=initial_dir, title=f"Select {key} file")
             else:
-                directory = askdirectory(title="Select a directory")
+                item = askdirectory(initialdir=initial_dir, title=f"Select {key} directory")
+
         except FileNotFoundError:
-            print("You have to choose a directory!")
+            print(f"You have to choose a {which}!")
             raise
 
-        if directory == "" or directory == ():
-            print("You have to choose a directory!")
-            exit(1)
+        if item == "" or item == ():
+            print(f"You have to choose a {which}!")
+            raise ValueError(f"Invalid {which} selection")
 
-    if remember_directory:
-        if f"initial_{key}" not in config or directory != config[f"initial_{key}"]:
-            config[f"initial_{key}"] = directory
-            config.save()
+        if config is not None and remember_directory:
+            if which == "directory":
+                directory = item
+            else:
+                directory = str(pathlib.Path(item).parent)
 
-    return directory
+            if f"initial_{key}_directory" not in config or directory != config[f"initial_{key}_directory"]:
+                config[f"initial_{key}_directory"] = directory
+                config.save()
+
+        return item
 
 
 def parse_relative_paths(input_dict, alternate_working_directory, awd_indicator="alternate", path_tag="filename",
