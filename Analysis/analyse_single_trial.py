@@ -9,7 +9,7 @@ from config_lib import Config
 
 def main():
     config = Config(config_path, default_config, type="yaml")
-    filename = load_filename(config)
+    filename = get_filename(config)
     parse_relative_paths(config["eit_configuration"], alternate_working_directory=str(pathlib.Path(pathlib.Path(filename).parent)), awd_indicator="data_directory")
 
     data, dataset_config = read_and_preprocess_data(filename, config["dataset_config_glob"], config["resample_freq_hz"])
@@ -49,10 +49,10 @@ def main():
     fig, ani1 = create_animated_image_plot(lin_out["df"]["recon_render"].values, title="Reconstruction image animation", vmin=recon_min, vmax=recon_max, origin="lower")
     fig, ani2 = create_animated_image_plot(lin_out["df"]["threshold_image"].values, title="Threshold image animation", origin="lower")
 
-    # # # Save animations
-    # writer_gif = animation.PillowWriter(fps=2, bitrate=2000)
-    # # ani1.save(str(pathlib.Path(filename).parent) + "\\" + "Reconstruction image animation.gif", writer_gif, dpi=1000)
-    # ani2.save(str(pathlib.Path(filename).parent) + "\\" + "Threshold image animation.gif", writer_gif, dpi=1000)
+    # # Save animations
+    writer_gif = animation.PillowWriter(fps=2, bitrate=2000)
+    ani1.save(str(pathlib.Path(filename).parent) + "\\" + "Reconstruction image animation.gif", writer_gif, dpi=1000)
+    ani2.save(str(pathlib.Path(filename).parent) + "\\" + "Threshold image animation.gif", writer_gif, dpi=1000)
 
     fig, ax = plt.subplots()
     ax.plot(lin_out["df"]["Volume delta"], lin_out["df"]["area^1.5_normalized"], ".")
@@ -70,22 +70,19 @@ def main():
     plt.show()
 
 
-
-
 # Default configurations -----------------------------------------------------
 # Don't change these to configure a single test! Change settings in the config file!
 configuration_directory = "configuration/"
 config_file = "config_single.yaml"
 config_path = configuration_directory + config_file
 default_config = {
-    "initial_directory": "",
     "dataset_config_glob": "Subject Information.yaml",
     "tests": {
         "Test 3": {"hold": "10s", "analysis_max": -1, "normalize_volume": "VC"}
     },
     "eit_configuration": {
         # "mesh_filename_wd": "data_directory",
-        "mesh_filename": "mesh/mesha06_bumpychestslice.stl",
+        "mesh_filename": "mesh/oval_chest_3.stl",
         "n_electrodes": 16,
         "dist": 3,
         # Recon:
@@ -103,8 +100,6 @@ default_config = {
     },
     "resample_freq_hz": 1000
 }
-
-
 
 
 if __name__ == "__main__":

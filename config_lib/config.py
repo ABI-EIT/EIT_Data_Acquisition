@@ -2,7 +2,6 @@ import yaml
 import json
 import os
 import pathlib
-from copy import deepcopy
 
 
 class Config:

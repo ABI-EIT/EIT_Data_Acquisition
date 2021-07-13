@@ -10,7 +10,7 @@ config_file = "configuration/config_analyse.json"
 
 def main():
     config = Config(config_file)
-    data_filename = load_filename(config)
+    data_filename = get_filename(config)
     with open(data_filename, "rb") as f:
         data = pickle.load(f)
     f.close()

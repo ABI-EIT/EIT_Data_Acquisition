@@ -9,7 +9,7 @@ from copy import deepcopy
 def main():
     # Load config files -----------------------------------------------------------------------------------------------
     config_constants = Config(config_file, default_config_constants, type="yaml")
-    parent_directory = get_directory(config_constants, key="parent_directory")
+    parent_directory = get_directory(config_constants)
     data_directories = list(pathlib.Path(parent_directory).glob(config_constants["subject_directory_glob"]))
 
     config_variables = Config(config_variables_file, {"base_config_variables": default_base_config_variables,
@@ -166,7 +166,7 @@ default_config_variable_modifiers = [
         "eit_configuration": {
             "electrode_placement": "equal_spacing_with_chest_and_spine_gap",
             "mesh_filename_wd": "data_directory",
-            "mesh_filename": "Lidar Mesh.STL",
+            "mesh_filename": "Lidar Mesh_s.STL",
         },
     },
     {
@@ -176,7 +176,7 @@ default_config_variable_modifiers = [
             "electrode_points_filename_wd": "data_directory",
             "electrode_points_filename": "centroids.csv",
             "mesh_filename_wd": "data_directory",
-            "mesh_filename": "Lidar Mesh.STL",
+            "mesh_filename": "Lidar Mesh_s.STL",
         },
     },
     # {
