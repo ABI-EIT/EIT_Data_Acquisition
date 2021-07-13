@@ -502,12 +502,11 @@ def _get_filename_or_directory(config=None, key="data", which="filename", rememb
                 item = askdirectory(initialdir=initial_dir, title=f"Select {key} directory")
 
         except FileNotFoundError:
-            print(f"You have to choose a {which}!")
             raise
 
         if item == "" or item == ():
-            print(f"You have to choose a {which}!")
-            raise ValueError(f"Invalid {which} selection")
+            error_message = f"Invalid {which} selection"
+            raise ValueError(error_message)
 
         if config is not None and remember_directory:
             if which == "directory":
