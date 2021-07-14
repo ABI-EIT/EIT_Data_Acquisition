@@ -294,12 +294,15 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.verticalLayoutVolume.addWidget(self.flow_canvas)
         self.verticalLayoutVolume.addWidget(toolbar)
 
-    def update_eit_plot(self, triangulation, eit_image, electrode_points):
+    def update_eit_plot(self, eit_image, pyeit_obj):
         if self.first_plot:
             self.add_eit_plot()
-            # self.first_plot is set to False below
+            self.first_plot = False
 
-        self.plot_axes.clear()
+        # Removing all axes since create_plot creates a colorbar, which creates its own axes
+        for ax in self.canvas.figure.axes:
+            ax.remove()
+        ax = self.canvas.figure.subplots()
 
         vmin = min(eit_image)
         vmax = max(eit_image)
@@ -308,24 +311,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             vmax = max((vmax, self.eit_scale[1]))
             self.eit_scale = (vmin, vmax)
 
-        plot_image = self.plot_axes.tripcolor(triangulation, eit_image, vmin=vmin, vmax=vmax)
-        plot_image.axes.set_aspect('equal')
-
-        for i, e in enumerate(electrode_points):
-            self.plot_axes.text(e[0], e[1], str(i + 1), size=12)
-
-        if self.first_plot:
-            divider = make_axes_locatable(self.plot_axes)
-            self.color_axis = divider.append_axes("right", size="5%", pad=0.1)
-            self.color_axis.yaxis.tick_right()
-            self.plot_axes.figure.colorbar(plot_image, cax=self.color_axis)
-            self.first_plot = False
-
-        else:
-            self.color_axis.clear()
-            self.plot_axes.figure.colorbar(plot_image, cax=self.color_axis)
-
-        self.plot_axes.figure.canvas.draw()
+        img, text = create_plot(ax, eit_image,  pyeit_obj, vmax=vmax, vmin=vmin)
+        self.canvas.draw_idle()
+        return img, text
 
     def parse_flow_data(self, items):
         data_list = []
@@ -394,8 +382,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 self.update_ui_state()
                 return
         self.eit_processor.start_new(work_kwargs={"eit_obj": self.eit_obj, "configuration": self.conf, "initial_bg": self.initial_background})
-        self.eit_processor.new_data.connect(lambda data: self.update_eit_plot(data[0], data[1], data[2]))
-
+        self.eit_processor.new_data.connect(lambda data: self.update_eit_plot(data[1], self.eit_obj))
         self.set_background_button.setEnabled(True)
         self.clear_background_button.setEnabled(True)
 
