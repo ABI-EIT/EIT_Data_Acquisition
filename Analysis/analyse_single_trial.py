@@ -1,7 +1,7 @@
 from Analysis.analysis_lib import *
 import matplotlib.pyplot as plt
 from abi_pyeit.app.utils import *
-from abi_pyeit.plotting import create_mesh_plot
+from abi_pyeit.plotting import create_mesh_plot, create_image_plot
 import math
 import matplotlib.animation as animation
 from config_lib import Config
@@ -33,7 +33,8 @@ def main():
 
 
     # Plotting ---------------------------------------------------------------------------------------------------------
-    ax = create_mesh_plot(lin_out["mesh"], electrodes=lin_out["electrode_nodes"])
+    fig, ax = plt.subplots()
+    create_mesh_plot(ax, lin_out["mesh"], electrodes=lin_out["electrode_nodes"])
 
     # Plot volume with EIT frames
     fig, ax = plt.subplots()
@@ -46,8 +47,15 @@ def main():
     # Linearity test plots
     recon_min = np.nanmin(lin_out["df"]["recon_render"].apply(np.nanmin))
     recon_max = np.nanmax(lin_out["df"]["recon_render"].apply(np.nanmax))
-    fig, ani1 = create_animated_image_plot(lin_out["df"]["recon_render"].values, title="Reconstruction image animation", vmin=recon_min, vmax=recon_max, origin="lower")
-    fig, ani2 = create_animated_image_plot(lin_out["df"]["threshold_image"].values, title="Threshold image animation", origin="lower")
+
+    # Create animated plots
+    fig, _ = plt.subplots()
+    ani1 = animation.FuncAnimation(fig, update_image_plot, fargs=(fig, lin_out["df"]["recon_render"].values, "Reconstruction image animation",
+                                   recon_min, recon_max), frames=len(lin_out["df"]["recon_render"].values), interval=500, repeat_delay=500)
+
+    fig, _ = plt.subplots()
+    ani2 = animation.FuncAnimation(fig, update_image_plot, fargs=(fig, lin_out["df"]["threshold_image"].values, "Threshold image animation"),
+                                   frames=len(lin_out["df"]["threshold_image"].values), interval=500, repeat_delay=500)
 
     # # Save animations
     writer_gif = animation.PillowWriter(fps=2, bitrate=2000)
@@ -69,6 +77,14 @@ def main():
 
     plt.show()
 
+
+def update_image_plot(i, fig, imgs, title, vmin=None, vmax=None):
+    # Removing all axes since create_plot creates a colorbar, which creates its own axes
+    for ax in fig.axes:
+        ax.remove()
+    ax = fig.subplots()
+    img = create_image_plot(ax, imgs[i].T, title=title, vmin=vmin, vmax=vmax, origin="lower")
+    return img
 
 # Default configurations -----------------------------------------------------
 # Don't change these to configure a single test! Change settings in the config file!
