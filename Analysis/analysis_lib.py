@@ -170,15 +170,6 @@ def linearity_test(data, test_config, test_ginput, eit_config, dataset_config, o
 
     # Process EIT ------------------------------------------------------------------------------------------------------
     mesh = load_stl(eit_config["mesh_filename"])
-    bounds = [
-        (np.min(mesh["node"][:, 0]), np.min(mesh["node"][:, 1])),
-        (np.max(mesh["node"][:, 0]), np.max(mesh["node"][:, 1]))
-    ]
-    image = model_inverse_uv(mesh, resolution=(1000, 1000), bounds=bounds)
-
-    if eit_config["mask_filename"] is not None:
-        mask_mesh = load_stl(eit_config["mask_filename"])
-        image = model_inverse_uv(mask_mesh, resolution=(1000, 1000), bounds=bounds)
 
     place_e_output = {}
     if eit_config["electrode_placement"] == "equal_spacing_with_chest_and_spine_gap":
@@ -206,30 +197,9 @@ def linearity_test(data, test_config, test_ginput, eit_config, dataset_config, o
                                             axis=1)
 
     # Render from solution (mesh + values) to nxn image
-    test_data["recon_render"] = test_data.apply(lambda row: map_image(image, np.array(row["solution"])), axis=1)
+    test_data["recon_render"] = render_reconstruction(mesh, test_data["solution"])
 
-    # Find the point in the rendered image with greatest magnitude (+ or -) so we can threshold on this
-    test_data["greatest_magnitude"] = test_data.apply(lambda row: lambda_max(row["recon_render"],
-                                                                             key=lambda val: np.abs(
-                                                                                 np.nan_to_num(val, nan=0))), axis=1)
-    # Find the max over all frames
-    max_all_frames = lambda_max(np.array(test_data["greatest_magnitude"]), key=np.abs)
-
-    # Create a threshold image
-    test_data["threshold_image"] = test_data.apply(lambda row: calc_absolute_threshold_set(row["recon_render"],
-                                                                                           max_all_frames * eit_config[
-                                                                                               "image_threshold_proportion"]),
-                                                   axis=1)
-
-    # Count pixels in the threshold image
-    test_data["reconstructed_area"] = test_data.apply(lambda row: np.count_nonzero(row["threshold_image"] == 1), axis=1)
-
-    max_pixels = np.sum(np.isfinite(test_data["threshold_image"].iloc[0]))
-
-    # Raise to power of 1.5 to obtain a linear relationship with volume
-    test_data["reconstructed_area^1.5"] = test_data["reconstructed_area"].pow(1.5)
-
-    test_data["area^1.5_normalized"] = test_data["reconstructed_area^1.5"] / max_pixels ** 1.5
+    test_data["area^1.5_normalized"], test_data["threshold_image"] = calculate_eit_volume(test_data["recon_render"], eit_config["image_threshold_proportion"])
 
     # Linear fit -------------------------------------------------------------------------------------------------------
     d = np.polyfit(test_data["Volume delta"], test_data["area^1.5_normalized"], 1)
@@ -251,6 +221,48 @@ def linearity_test(data, test_config, test_ginput, eit_config, dataset_config, o
 
 
 # # Support code for linearity test -----------------------------------------------------------------------------------
+def render_reconstruction(mesh, reconstruction_series, mask_filename=None):
+
+    bounds = [
+        (np.min(mesh["node"][:, 0]), np.min(mesh["node"][:, 1])),
+        (np.max(mesh["node"][:, 0]), np.max(mesh["node"][:, 1]))
+    ]
+    image = model_inverse_uv(mesh, resolution=(1000, 1000), bounds=bounds)
+
+    if mask_filename is not None:
+        mask_mesh = load_stl(mask_filename)
+        image = model_inverse_uv(mask_mesh, resolution=(1000, 1000), bounds=bounds)
+
+    recon_render = [map_image(image, np.array(row)) for row in reconstruction_series]
+
+    return recon_render
+
+
+def calculate_eit_volume(recon_render_pd_series, threshold_proportion=0.15):
+    # Find the point in the rendered image with greatest magnitude (+ or -) so we can threshold on this
+    greatest_magnitude = recon_render_pd_series.apply(lambda row: lambda_max(row,
+                                                                             key=lambda val: np.abs(
+                                                                                 np.nan_to_num(val, nan=0))))
+    # Find the max over all frames
+    max_all_frames = lambda_max(np.array(greatest_magnitude), key=lambda val: np.abs(np.nan_to_num(val, nan=0)))
+
+    # Create a threshold image
+    threshold_image_series = recon_render_pd_series.apply(lambda row: calc_absolute_threshold_set(row,
+                                                                            max_all_frames * threshold_proportion))
+
+    # Count pixels in the threshold image
+    reconstructed_area_series = threshold_image_series.apply(lambda row: np.count_nonzero(row == 1))
+
+    max_pixels = np.sum(np.isfinite(threshold_image_series.iloc[0]))
+
+    # Raise to power of 1.5 to obtain a linear relationship with volume
+    volume_series = reconstructed_area_series.pow(1.5)
+
+    volume_normalized_series = volume_series / max_pixels ** 1.5
+
+    return volume_normalized_series, threshold_image_series
+
+
 def get_ith(data, i):
     """
     Wrapper for pandas iloc that returns None if index is out of range
