@@ -8,9 +8,10 @@ from scipy import integrate
 from scipy.stats import linregress
 import pathlib
 import matplotlib.pyplot as plt
-from abi_pyeit.quality.plotting import *
-from abi_pyeit.app.eit import *
-from abi_pyeit.mesh.wrapper import *
+from abi_pyeit.eit.render import model_inverse_uv, map_image, calc_absolute_threshold_set
+from abi_pyeit.plotting import get_img_bounds
+from abi_pyeit.app.utils import *
+from abi_pyeit.mesh.utils import *
 import matplotlib.animation as animation
 import math
 from config_lib import Config
@@ -18,6 +19,7 @@ from itertools import count
 from functools import lru_cache, wraps
 import re
 from datetime import datetime
+
 
 # # ABI EIT DATA PROCESSING ---------------------------------------------------------------------------------------------
 # # This section contains code that knows about the format of the data we get from the QT app
@@ -125,7 +127,7 @@ class HashableContainer:
         return hash(self.hash_trans(self.object))
 
 
-@lru_cache
+@lru_cache(maxsize=100)
 def _call_with_hashables(wrapped, *hashable_args, **hashable_kwargs):
     original_args = [arg.object for arg in hashable_args]
     original_kwargs = {key: val.object for key, val in hashable_kwargs.items()}
@@ -265,35 +267,6 @@ def rsquared(x, y):
     slope, intercept, r_value, p_value, std_err = linregress(x, y)
     return r_value ** 2
 
-
-# This maybe should be in pyeit?
-def calc_absolute_threshold_set(image, threshold):
-    """
-
-
-    Parameters
-    ----------
-    image: np.Array(width,height)
-    threshold: float
-
-    Returns
-    ---------
-    image_set: np.Array(width,height)
-    """
-
-    image_set = np.full(np.shape(image), np.nan)
-
-    if threshold < 0:
-        with np.errstate(invalid="ignore"):
-            image_set[image < threshold] = 1
-            image_set[image >= threshold] = 0
-
-    else:
-        with np.errstate(invalid="ignore"):
-            image_set[image < threshold] = 0
-            image_set[image >= threshold] = 1
-
-    return image_set
 
 
 # # --------------------------------------------------------------------------------------------------------------------

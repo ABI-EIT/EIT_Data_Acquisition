@@ -1,7 +1,7 @@
 from Analysis.analysis_lib import *
 import matplotlib.pyplot as plt
-from abi_pyeit.app.eit import *
-from abi_pyeit.quality.plotting import *
+from abi_pyeit.app.utils import *
+from abi_pyeit.plotting import create_mesh_plot
 import math
 import matplotlib.animation as animation
 from config_lib import Config
@@ -33,7 +33,7 @@ def main():
 
 
     # Plotting ---------------------------------------------------------------------------------------------------------
-    fig, ax = create_mesh_plot(lin_out["mesh"], lin_out["electrode_nodes"], plot_electrodes=True)
+    ax = create_mesh_plot(lin_out["mesh"], electrodes=lin_out["electrode_nodes"])
 
     # Plot volume with EIT frames
     fig, ax = plt.subplots()

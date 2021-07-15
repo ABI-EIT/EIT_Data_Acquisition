@@ -9,7 +9,7 @@ from matplotlib.backends.backend_qt5agg import (
 import matplotlib
 import matplotlib.pyplot
 from mpl_toolkits.axes_grid1 import make_axes_locatable
-from abi_pyeit.app.eit import *
+from abi_pyeit.app.utils import *
 import time
 from background_process_workers import *
 from Toaster import Toaster

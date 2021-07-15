@@ -1,8 +1,8 @@
 from Analysis.analysis_lib import *
 import matplotlib.pyplot as plt
 import matplotlib.figure as figure
-from abi_pyeit.app.eit import *
-from abi_pyeit.quality.plotting import *
+from abi_pyeit.app.utils import *
+from abi_pyeit.plotting import create_plot
 import math
 import matplotlib.animation as animation
 from config_lib import Config

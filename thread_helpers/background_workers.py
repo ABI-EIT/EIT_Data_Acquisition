@@ -3,7 +3,7 @@ from thread_helpers.worker import Producer, Consumer, put_in_queue
 import matplotlib.tri as tri
 import pyvisa
 import threading
-from abi_pyeit.app.eit import load_oeit_data, load_conf, parse_oeit_line, process_frame
+from abi_pyeit.app.utils import load_oeit_data, load_conf, parse_oeit_line, process_frame
 import os
 from datetime import datetime
 from time import time
