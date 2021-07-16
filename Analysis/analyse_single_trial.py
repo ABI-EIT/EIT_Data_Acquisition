@@ -85,7 +85,7 @@ config_path = configuration_directory + config_file
 default_config = {
     "dataset_config_glob": "Subject Information.yaml",
     "tests": {
-        "Test 3": {"hold": "10s", "analysis_max": -1, "normalize_volume": "VC"}
+        "Test 3": {"analysis_max": -1, "normalize_volume": "VC"}
     },
     "eit_configuration": {
         # "mesh_filename_wd": "data_directory",

@@ -30,7 +30,8 @@ def main():
             dfs = [item["linearity"]["df"] for _, item in list(result.items())]
             fig, ax = plt.subplots()
             for j, df in enumerate(dfs):
-                df.plot(x="Volume delta", y="area^1.5_normalized", label=dirnames[j].split(" - ")[0], ax=ax)
+                # df.plot(x="Volume delta", y="area^1.5_normalized", label=dirnames[j].split(" - ")[0], ax=ax)
+                df.plot(x="Volume delta", y="area^1.5_normalized", label=dirnames[j].split(" - ")[1], ax=ax)
             ax.set_ylabel("EIT area^1.5 normalized")
             ax.set_xlabel("Volume delta normalized")
             ax.set_title(f"EIT vs Volume delta for {len(dirnames)} subjects,\n {test_names[i]}")
@@ -65,10 +66,10 @@ def main():
         area_ratios = {}
         for subject in dirnames:
             df = results[2][subject]['linearity']['df']
-            lidar_area = np.sum(np.isfinite(df["threshold_image"].iloc[0]))
+            lidar_area = np.sum(np.isfinite(df["max_pixels"].iloc[0]))
 
             df_2 = results[0][subject]['linearity']['df']
-            oval_area = np.sum(np.isfinite(df_2["threshold_image"].iloc[0]))
+            oval_area = np.sum(np.isfinite(df_2["max_pixels"].iloc[0]))
             area_ratios[subject] = lidar_area / oval_area
 
         # Calculate error in electrode placement measured by lidar compared to equal spaced

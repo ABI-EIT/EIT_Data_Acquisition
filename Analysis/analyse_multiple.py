@@ -130,7 +130,6 @@ default_base_config_variables = {
     "test_configurations": {
         "linearity": {
             "analysis_max": -1,
-            "hold": "10s",
             "normalize_volume": "VC"
         }
     }

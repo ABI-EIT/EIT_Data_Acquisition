@@ -139,27 +139,9 @@ def linearity_test(data, test_config, test_ginput, eit_config, dataset_config, o
     if out is None:
         out = {}
 
-    # Process time windows ---------------------------------------------------------------------------------------------
+    # Create test dataframe
     times = pd.to_timedelta(test_ginput)
-    hold = test_config["hold"]
-    test_data = pd.DataFrame(columns=["In", "Out"], data=np.array([times[::2], times[1::2]]).T)
-    test_data["In end"] = test_data["In"].apply(lambda row: row + hold)
-    test_data["In Volume"] = test_data.apply(lambda row: data["Volume (L)"].loc[row["In"]:row["In end"]].mean(), axis=1)
-    test_data["Out end"] = test_data["Out"].apply(lambda row: row + hold)
-    test_data["Out Volume"] = test_data.apply(lambda row: data["Volume (L)"].loc[row["Out"]:row["Out end"]].mean(),
-                                              axis=1)
-
-    # get_ith(data,1) gets the second EIT frame in the window. This ensures it is a frame completely scanned during the window
-    test_data["EIT in"] = test_data.apply(
-        lambda row: get_ith(data["EIT"].where(data["EIT"].loc[row["In"]:row["In end"]].notna()).dropna(), 1), axis=1)
-    test_data["EIT out"] = test_data.apply(
-        lambda row: get_ith(data["EIT"].where(data["EIT"].loc[row["Out"]:row["Out end"]].notna()).dropna(), 1), axis=1)
-
-    # Calculate volume deltas ------------------------------------------------------------------------------------------
-    test_data["Volume delta"] = (test_data["In Volume"] - test_data["Out Volume"]).abs()
-
-    test_data = test_data.dropna()
-    test_data = test_data.sort_values(by="Volume delta")
+    test_data = extract_test_3_data(data, times)
 
     if test_config["normalize_volume"] == "VC":
         mean_vc = np.average(dataset_config["VC"])
@@ -170,7 +152,9 @@ def linearity_test(data, test_config, test_ginput, eit_config, dataset_config, o
 
     # Process EIT ------------------------------------------------------------------------------------------------------
     mesh = load_stl(eit_config["mesh_filename"])
+    mask_mesh = load_stl(eit_config["mask_filename"]) if eit_config["mask_filename"] is not None else None
 
+    # Place electrodes
     place_e_output = {}
     if eit_config["electrode_placement"] == "equal_spacing_with_chest_and_spine_gap":
         electrode_nodes = place_electrodes_equal_spacing(mesh, n_electrodes=eit_config["n_electrodes"],
@@ -185,6 +169,8 @@ def linearity_test(data, test_config, test_ginput, eit_config, dataset_config, o
         raise ValueError("Invalid entry for the \"electrode_placement\" field")
 
     ex_mat = eit_scan_lines(eit_config["n_electrodes"], eit_config["dist"])
+
+    # Create pyeit object
     if not cache_pyeit_obj:
         pyeit_obj = JAC(mesh, np.array(electrode_nodes), ex_mat, step=1, perm=1)
     else:
@@ -192,14 +178,15 @@ def linearity_test(data, test_config, test_ginput, eit_config, dataset_config, o
     pyeit_obj.setup(p=eit_config["p"], lamb=eit_config["lamb"], method=eit_config["method"])
 
     # Solve EIT data
-    test_data["solution"] = test_data.apply(lambda row: np.real(pyeit_obj.solve(v1=parse_oeit_line(row["EIT in"]),
-                                                                                v0=parse_oeit_line(row["EIT out"]))),
+    test_data["solution"] = test_data.apply(lambda row: np.real(pyeit_obj.solve(v1=parse_oeit_line(row["EIT In"]),
+                                                                                v0=parse_oeit_line(row["EIT Out"]))),
                                             axis=1)
 
     # Render from solution (mesh + values) to nxn image
-    test_data["recon_render"] = render_reconstruction(mesh, test_data["solution"])
+    test_data["recon_render"] = render_reconstruction(mesh, test_data["solution"], mask_mesh)
 
-    test_data["area^1.5_normalized"], test_data["threshold_image"] = calculate_eit_volume(test_data["recon_render"], eit_config["image_threshold_proportion"])
+    test_data["area^1.5_normalized"], threshold_image_series = calculate_eit_volume(test_data["recon_render"], eit_config["image_threshold_proportion"])
+    test_data["max_pixels"] = np.sum(np.isfinite(threshold_image_series[0]))
 
     # Linear fit -------------------------------------------------------------------------------------------------------
     d = np.polyfit(test_data["Volume delta"], test_data["area^1.5_normalized"], 1)
@@ -207,7 +194,7 @@ def linearity_test(data, test_config, test_ginput, eit_config, dataset_config, o
     test_data["calculated"] = f(test_data["Volume delta"])
     r_squared = rsquared(test_data["calculated"], test_data["area^1.5_normalized"])
 
-    out["df"] = test_data
+    out["df"] = test_data[["Volume delta", "area^1.5_normalized", "max_pixels"]]
     out["r_squared"] = r_squared
     out["mesh"] = mesh
     out["electrode_nodes"] = electrode_nodes
@@ -219,20 +206,49 @@ def linearity_test(data, test_config, test_ginput, eit_config, dataset_config, o
 # # -------------------------------------------------------------------------------------------------------------------
 # # -------------------------------------------------------------------------------------------------------------------
 
-
 # # Support code for linearity test -----------------------------------------------------------------------------------
-def render_reconstruction(mesh, reconstruction_series, mask_filename=None):
-    # TODO: mask should be passed as a mesh not a filename to make this more consistent plus have better separation of concerns
+def extract_test_3_data(data, times):
+    test_data = pd.DataFrame(columns=["In", "Out"], data=np.array([times[::2], times[1::2]]).T)
 
+    # Time windows where EIT scan occurred
+    test_data["In Start"] = test_data.apply(lambda row: data["EIT"].where(data.index > row["In"]).dropna().index[0],
+                                            axis=1)
+    test_data["In End"] = test_data.apply(lambda row: data["EIT"].where(data.index > row["In"]).dropna().index[1],
+                                          axis=1)
+    test_data["Out Start"] = test_data.apply(lambda row: data["EIT"].where(data.index > row["Out"]).dropna().index[0],
+                                             axis=1)
+    test_data["Out End"] = test_data.apply(lambda row: data["EIT"].where(data.index > row["Out"]).dropna().index[1],
+                                           axis=1)
+
+    # EIT measurement from each window is the one received at the end of the window
+    test_data["EIT In"] = test_data.apply(lambda row: data["EIT"][row["In End"]], axis=1)
+    test_data["EIT Out"] = test_data.apply(lambda row: data["EIT"][row["Out End"]], axis=1)
+
+    # Volume for each window is average of measurement within that window
+    test_data["In Volume"] = test_data.apply(lambda row: data["Volume (L)"].loc[row["In Start"]:row["In End"]].mean(),
+                                             axis=1)
+    test_data["Out Volume"] = test_data.apply(
+        lambda row: data["Volume (L)"].loc[row["Out Start"]:row["Out End"]].mean(), axis=1)
+
+    # Calculate volume deltas ------------------------------------------------------------------------------------------
+    test_data["Volume delta"] = (test_data["In Volume"] - test_data["Out Volume"]).abs()
+
+    test_data = test_data.dropna()
+    test_data = test_data.sort_values(by="Volume delta")
+
+    return test_data
+
+
+def render_reconstruction(mesh, reconstruction_series, mask_mesh=None):
     bounds = [
         (np.min(mesh["node"][:, 0]), np.min(mesh["node"][:, 1])),
         (np.max(mesh["node"][:, 0]), np.max(mesh["node"][:, 1]))
     ]
-    image = model_inverse_uv(mesh, resolution=(1000, 1000), bounds=bounds)
 
-    if mask_filename is not None:
-        mask_mesh = load_stl(mask_filename)
+    if mask_mesh is not None:
         image = model_inverse_uv(mask_mesh, resolution=(1000, 1000), bounds=bounds)
+    else:
+        image = model_inverse_uv(mesh, resolution=(1000, 1000), bounds=bounds)
 
     recon_render = [map_image(image, np.array(row)) for row in reconstruction_series]
 
