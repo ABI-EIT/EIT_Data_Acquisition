@@ -1,7 +1,7 @@
 from Analysis.analysis_lib import *
 import matplotlib.pyplot as plt
 from abi_pyeit.app.utils import *
-from abi_pyeit.plotting import create_mesh_plot, create_image_plot
+from abi_pyeit.plotting import create_mesh_plot, create_image_plot, update_image_plot
 import math
 import matplotlib.animation as animation
 from config_lib import Config
@@ -50,11 +50,11 @@ def main():
 
     # Create animated plots
     fig, _ = plt.subplots()
-    ani1 = animation.FuncAnimation(fig, update_image_plot, fargs=(fig, lin_out["df"]["recon_render"].values, "Reconstruction image animation",
-                                   recon_min, recon_max), frames=len(lin_out["df"]["recon_render"].values), interval=500, repeat_delay=500)
+    ani1 = animation.FuncAnimation(fig, update_image_plot, fargs=(fig, [v.T for v in lin_out["df"]["recon_render"].values], {"title":"Threshold image animation",
+                                   "vmin": recon_min, "vmax": recon_max}), frames=len(lin_out["df"]["recon_render"].values), interval=500, repeat_delay=500)
 
     fig, _ = plt.subplots()
-    ani2 = animation.FuncAnimation(fig, update_image_plot, fargs=(fig, lin_out["df"]["threshold_image"].values, "Threshold image animation"),
+    ani2 = animation.FuncAnimation(fig, update_image_plot, fargs=(fig, [v.T for v in lin_out["df"]["threshold_image"].values], {"title":"Threshold image animation"}),
                                    frames=len(lin_out["df"]["threshold_image"].values), interval=500, repeat_delay=500)
 
     # # Save animations
@@ -76,15 +76,6 @@ def main():
     # lin_out["df"][["Volume delta", "area^1.5_normalized"]].to_csv(str(pathlib.Path(filename).parent) + "\\" + "eit_vs_volume.csv")
 
     plt.show()
-
-
-def update_image_plot(i, fig, imgs, title, vmin=None, vmax=None):
-    # Removing all axes since create_plot creates a colorbar, which creates its own axes
-    for ax in fig.axes:
-        ax.remove()
-    ax = fig.subplots()
-    img = create_image_plot(ax, imgs[i].T, title=title, vmin=vmin, vmax=vmax, origin="lower")
-    return img
 
 # Default configurations -----------------------------------------------------
 # Don't change these to configure a single test! Change settings in the config file!

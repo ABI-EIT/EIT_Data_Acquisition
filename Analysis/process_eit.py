@@ -2,7 +2,7 @@ from Analysis.analysis_lib import *
 import matplotlib.pyplot as plt
 import matplotlib.figure as figure
 from abi_pyeit.app.utils import *
-from abi_pyeit.plotting import create_plot, create_image_plot
+from abi_pyeit.plotting import create_plot, create_image_plot, update_image_plot
 import math
 import matplotlib.animation as animation
 from config_lib import Config
@@ -58,7 +58,7 @@ def main():
 
     fig1, ax1 = plt.subplots()
     ani2 = animation.FuncAnimation(fig1, update_image_plot, frames=len(threshold_images), interval=181, repeat_delay=500,
-                                   fargs=(fig1, threshold_images, "Threshold Image Plot"))
+                                   fargs=(fig1, [i.T for i in threshold_images], {"title": "Threshold Image Plot"}))
 
     # Save gif
     writer = animation.PillowWriter(fps=int(1000/181))
@@ -67,15 +67,6 @@ def main():
     ani.save(results_directory+result_filename, writer, dpi=1000)
 
     plt.show()
-
-
-def update_image_plot(i, fig, imgs, title, vmin=None, vmax=None):
-    # Removing all axes since create_plot creates a colorbar, which creates its own axes
-    for ax in fig.axes:
-        ax.remove()
-    ax = fig.subplots()
-    img = create_image_plot(ax, imgs[i].T, title=title, vmin=vmin, vmax=vmax, origin="lower")
-    return img
 
 # Default configurations -----------------------------------------------------
 # Don't change these to configure a single test! Change settings in the config file!
