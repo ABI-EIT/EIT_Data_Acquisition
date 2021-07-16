@@ -222,6 +222,7 @@ def linearity_test(data, test_config, test_ginput, eit_config, dataset_config, o
 
 # # Support code for linearity test -----------------------------------------------------------------------------------
 def render_reconstruction(mesh, reconstruction_series, mask_filename=None):
+    # TODO: mask should be passed as a mesh not a filename to make this more consistent plus have better separation of concerns
 
     bounds = [
         (np.min(mesh["node"][:, 0]), np.min(mesh["node"][:, 1])),
@@ -238,25 +239,24 @@ def render_reconstruction(mesh, reconstruction_series, mask_filename=None):
     return recon_render
 
 
-def calculate_eit_volume(recon_render_pd_series, threshold_proportion=0.15):
+def calculate_eit_volume(recon_render_series, threshold_proportion=0.15):
+    # Todo: maybe an intermediate should be area. We should also output the not normalized volume (or the max_pixels).
     # Find the point in the rendered image with greatest magnitude (+ or -) so we can threshold on this
-    greatest_magnitude = recon_render_pd_series.apply(lambda row: lambda_max(row,
-                                                                             key=lambda val: np.abs(
-                                                                                 np.nan_to_num(val, nan=0))))
+    greatest_magnitude = [lambda_max(row, key=lambda val: np.abs(np.nan_to_num(val, nan=0))) for row in recon_render_series]
+
     # Find the max over all frames
     max_all_frames = lambda_max(np.array(greatest_magnitude), key=lambda val: np.abs(np.nan_to_num(val, nan=0)))
 
     # Create a threshold image
-    threshold_image_series = recon_render_pd_series.apply(lambda row: calc_absolute_threshold_set(row,
-                                                                            max_all_frames * threshold_proportion))
+    threshold_image_series = [calc_absolute_threshold_set(row, max_all_frames * threshold_proportion) for row in recon_render_series]
 
     # Count pixels in the threshold image
-    reconstructed_area_series = threshold_image_series.apply(lambda row: np.count_nonzero(row == 1))
+    reconstructed_area_series = [np.count_nonzero(row == 1) for row in threshold_image_series]
 
-    max_pixels = np.sum(np.isfinite(threshold_image_series.iloc[0]))
+    max_pixels = np.sum(np.isfinite(threshold_image_series[0]))
 
     # Raise to power of 1.5 to obtain a linear relationship with volume
-    volume_series = reconstructed_area_series.pow(1.5)
+    volume_series = np.power(reconstructed_area_series, 1.5)
 
     volume_normalized_series = volume_series / max_pixels ** 1.5
 
@@ -444,6 +444,7 @@ def squash_and_resample(data, freq_column=None, resample_freq_hz=1000, output=No
 # # Function to get a filename by asking the user.
 # Maybe this should be in the config lib
 def get_filename(config=None, key="data", remember_directory=True):
+    # Todo: we probably should put the config stuff in a separate function.
     return _get_filename_or_directory(config=config, key=key, which="filename", remember_directory=remember_directory)
 
 
@@ -536,46 +537,8 @@ def parse_relative_paths(input_dict, alternate_working_directory, awd_indicator=
                     input_dict[key] = input_dict[key + wd_tag] + "/" + input_dict[key]
 
 
-# # Create an animated image plot
-# Maybe this should be in the pyeit plotting functions
-def create_animated_image_plot(images, title, background=np.nan, margin=10, interval=500, repeat_delay=500, **kwargs):
-    """
-    Create a plot using imshow and set the axis bounds to frame the image
-
-    Parameters
-    ----------
-    image
-        Image array
-    title
-        Plot title
-    background
-        Value of the background in the image
-    margin
-        Margin to place at the sides of the image
-    origin
-        Origin parameter for imshow
-
-    Returns
-    -------
-    fig, ax
-
-    """
-    fig, ax = plt.subplots()
-    ims = [[ax.imshow(im.T, **kwargs, animated=True)] for im in images]
-    img_bounds = get_img_bounds(images[0].T, background=background)
-
-    ax.set_ybound(img_bounds[0] - margin, img_bounds[1] + margin)
-    ax.set_xbound(img_bounds[2] - margin, img_bounds[3] + margin)
-    ax.set_title(title)
-
-    fig.colorbar(ims[0][0])
-
-    ani = animation.ArtistAnimation(fig, ims, interval=interval, blit=True, repeat_delay=repeat_delay)
-
-    return fig, ani
-
-
 def create_unique_timestamped_file_name(directory=".", date_format="%Y-%m-%dT%H_%M", prefix="", suffix="", extension=""):
+    # TODO: don't create the directory (for better separation of concerns)
     if not os.path.exists(directory):
         os.mkdir(directory)
 
