@@ -2,7 +2,7 @@ from Analysis.analysis_lib import *
 import matplotlib.pyplot as plt
 import matplotlib.figure as figure
 from abi_pyeit.app.utils import *
-from abi_pyeit.plotting import create_plot, create_image_plot, update_image_plot
+from abi_pyeit.plotting import create_plot, create_image_plot, update_image_plot, update_plot
 import math
 import matplotlib.animation as animation
 from config_lib import Config
@@ -43,22 +43,13 @@ def main():
 
     # Create animated plot
     fig, _ = plt.subplots()
-    vmax = np.max(eit_images)
-    vmin = np.min(eit_images)
 
-    def update_plot(i):
-        # Removing all axes since create_plot creates a colorbar, which creates its own axes
-        for ax in fig.axes:
-            ax.remove()
-        ax = fig.subplots()
-        img, text = create_plot(ax, eit_images[i],  pyeit_obj, vmax=vmax, vmin=vmin)
-        return img, text
+    ani = animation.FuncAnimation(fig, update_plot, frames=len(eit_images), interval=181, repeat_delay=500,
+                                  fargs=(fig, eit_images, pyeit_obj, {"vmax": np.max(eit_images), "vmin": np.min(eit_images)}))
 
-    ani = animation.FuncAnimation(fig, update_plot, frames=len(eit_images), interval=181, repeat_delay=500)
-
-    fig1, ax1 = plt.subplots()
-    ani2 = animation.FuncAnimation(fig1, update_image_plot, frames=len(threshold_images), interval=181, repeat_delay=500,
-                                   fargs=(fig1, [i.T for i in threshold_images], {"title": "Threshold Image Plot"}))
+    fig, _ = plt.subplots()
+    ani2 = animation.FuncAnimation(fig, update_image_plot, frames=len(threshold_images), interval=181, repeat_delay=500,
+                                   fargs=(fig, [i.T for i in threshold_images], {"title": "Threshold Image Plot"}))
 
     # Save gif
     writer = animation.PillowWriter(fps=int(1000/181))
