@@ -5,7 +5,7 @@ from scipy import stats
 import numpy as np
 from Analysis.analysis_lib import *
 
-config_file = "configuration/config_analyse.json"
+config_file = "../configuration/config_analyse.json"
 
 
 def main():
@@ -31,10 +31,10 @@ def main():
             fig, ax = plt.subplots()
             for j, df in enumerate(dfs):
                 # df.plot(x="Volume delta", y="area^1.5_normalized", label=dirnames[j].split(" - ")[0], ax=ax)
-                df.plot(x="Volume delta", y="area^1.5_normalized", label=dirnames[j].split(" - ")[1], ax=ax)
+                df.plot(x="Volume delta", y="area^1.5_normalized", label=dirnames[j], ax=ax)
             ax.set_ylabel("EIT area^1.5 normalized")
             ax.set_xlabel("Volume delta normalized")
-            ax.set_title(f"EIT vs Volume delta for {len(dirnames)} subjects,\n {test_names[i]}")
+            ax.set_title(f"EIT vs Volume delta for {len(dirnames)} datasets,\n {test_names[i]}")
             r2s = [result[key]["linearity"]["r_squared"] for key in result]
             ax.text(0.3, 0.05, r'Mean $r^2$' + f' = {np.average(r2s):.4f}')
 

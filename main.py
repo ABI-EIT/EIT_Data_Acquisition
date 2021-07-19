@@ -14,7 +14,8 @@ import time
 from background_process_workers import *
 from Toaster import Toaster
 from PyQt5.QtGui import QIcon
-from concurrent_workers import put_in_queue
+from adv_prodcon import put_in_queue
+from abi_pyeit.plotting import create_plot
 import config_lib
 
 Ui_MainWindow, QMainWindow = uic.loadUiType("layout/eit_with_dual_flow.ui")

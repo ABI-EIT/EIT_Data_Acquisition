@@ -1,5 +1,5 @@
 from PyQt5 import QtCore
-from concurrent_workers import Producer, Consumer
+from adv_prodcon import Producer, Consumer
 from multiprocessing import Manager
 import matplotlib.tri as tri
 import threading

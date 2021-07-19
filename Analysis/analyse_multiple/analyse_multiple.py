@@ -96,7 +96,7 @@ def main():
     f.close()
 
 
-config_file = "configuration/config_multiple.yaml"
+config_file = "../configuration/config_multiple.yaml"
 default_config_constants = {
     "initial_parent_directory": "",
     "subject_directory_glob": "Subject *",
@@ -113,7 +113,7 @@ default_config_constants = {
     "run_tests": ["linearity"]
 }
 
-config_variables_file = "configuration/config_multiple_variables.json"
+config_variables_file = "../configuration/config_multiple_variables.json"
 default_base_config_variables = {
     "eit_configuration": {
         "chest_and_spine_ratio": 2,
