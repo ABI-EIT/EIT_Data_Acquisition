@@ -1,15 +1,14 @@
-import pandas as pd
-
-from Analysis.analysis_lib import *
+from Analysis.abi_eit_protocol import *
 import matplotlib.pyplot as plt
-import matplotlib.figure as figure
 from abi_pyeit.app.utils import *
-from abi_pyeit.plotting import create_plot, create_image_plot, update_image_plot, update_plot
-import math
-import matplotlib.animation as animation
 from config_lib import Config
 from scipy.fft import rfft, rfftfreq
 
+from config_lib.utils import get_filename, parse_relative_paths
+
+"""
+process_eit_data.py is a script used to process a series of EIT frames
+"""
 
 def main():
     config = Config(config_path, default_config, type="json")
@@ -92,7 +91,7 @@ def main():
 # Don't change these to configure a single test! Change settings in the config file!
 results_directory = r"results\\"
 result_filename = "result.gif"
-config_file = r"configuration\process_eit.json"
+config_file = r"configuration/process_eit.json"
 config_path = config_file
 default_config = {
     "background_type": "file",

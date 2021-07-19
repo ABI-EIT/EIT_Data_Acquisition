@@ -1,10 +1,16 @@
-from Analysis.analysis_lib import *
+from Analysis.abi_eit_protocol import *
 from config_lib import Config
 from pandas.core.common import flatten
 from tqdm import tqdm
 from deepmerge import merge_or_raise
 from copy import deepcopy
 
+from config_lib.utils import get_input, get_directory, parse_relative_paths, create_unique_timestamped_file_name
+
+"""
+analyse_multiple is a script used to analyse multiple datasets and configurations from our EIT + Venturi Spirometry test protocol.
+processed data is saved in a pickle. View results using analyse_results.py 
+"""
 
 def main():
     # Load config files -----------------------------------------------------------------------------------------------
@@ -48,7 +54,8 @@ def main():
         run_test_tags = list(set(flatten(run_tags_notflat)))
         for tag in run_test_tags:
             if tag not in data_ginput:
-                points = get_input(data, show_columns=["Volume (L)"], test_name=tag)
+                start, stop = find_last_test_start_and_stop(data["Tag"], tag)
+                points = get_input(data[start:stop], show_columns=["Volume (L)"], test_name=tag)
                 data_ginput[tag] = [point[0] for point in points]  # save only times
                 data_ginput.save()
 

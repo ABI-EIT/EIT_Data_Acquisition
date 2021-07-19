@@ -10,5 +10,5 @@ venv/
 /data
 examples/data
 
-Analysis/configuration
-Analysis/results
+configuration/
+results/

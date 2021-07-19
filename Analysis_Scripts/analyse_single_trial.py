@@ -1,10 +1,14 @@
-from Analysis.analysis_lib import *
+from Analysis.abi_eit_protocol import *
 import matplotlib.pyplot as plt
 from abi_pyeit.app.utils import *
-from abi_pyeit.plotting import create_mesh_plot, create_image_plot, update_image_plot
-import math
+from abi_pyeit.plotting import create_mesh_plot, update_image_plot
 import matplotlib.animation as animation
 from config_lib import Config
+from config_lib.utils import get_input, get_filename, parse_relative_paths
+
+"""
+analyse_single_trial is a script used to analyse the results of a trial based on our EIT + Venturi Spirometry test procedure.
+"""
 
 
 def main():
@@ -22,7 +26,8 @@ def main():
     # Get ginput for all desired tests, either from user or from file
     for test in config["tests"]:
         if test not in data_ginput:
-            points = get_input(data, show_columns=["Volume (L)"], test_name=test)
+            start, stop = find_last_test_start_and_stop(data["Tag"], test)
+            points = get_input(data[start:stop], show_columns=["Volume (L)"], test_name=test)
             data_ginput[test] = [point[0] for point in points]  # save only times
             data_ginput.save()
 
