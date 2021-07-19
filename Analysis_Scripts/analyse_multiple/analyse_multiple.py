@@ -4,23 +4,63 @@ from pandas.core.common import flatten
 from tqdm import tqdm
 from deepmerge import merge_or_raise
 from copy import deepcopy
-
+from PyQt5 import QtWidgets, uic
+import sys
+import matplotlib.pyplot as plt
 from config_lib.utils import get_input, get_directory, parse_relative_paths, create_unique_timestamped_file_name
+from scipy import stats
 
 """
 analyse_multiple is a script used to analyse multiple datasets and configurations from our EIT + Venturi Spirometry test protocol.
-processed data is saved in a pickle. View results using analyse_results.py 
+processed data is saved in a pickle. 
 """
 
-def main():
-    # Load config files -----------------------------------------------------------------------------------------------
-    config_constants = Config(config_file, default_config_constants, type="yaml")
-    parent_directory = get_directory(config_constants)
+Ui_MainWindow, QMainWindow = uic.loadUiType("layout/analyse_multiple.ui")
+
+
+class MainWindow(QMainWindow, Ui_MainWindow):
+    def __init__(self):
+        super(MainWindow, self).__init__()
+        self.setupUi(self)
+
+        self.config_constants = Config(config_file, default_config_constants, type="yaml")
+        self.config_variables = Config(config_variables_file, {"base_config_variables": default_base_config_variables,
+                                                               "config_variable_modifiers": default_config_variable_modifiers})
+        if "initial_data_directory" in self.config_constants:
+            self.data_directory_line_edit.setText(self.config_constants["initial_data_directory"])
+
+        self.data_directory_tool_button.clicked.connect(self.get_data_directory)
+        self.results_file_tool_button.clicked.connect(self.get_results_file)
+
+        self.run_analysis_button.clicked.connect(lambda: self.run_analysis(self.data_directory_line_edit.text()))
+        self.analyse_results_button.clicked.connect(lambda: self.analyse_results(self.results_file_line_edit.text()))
+
+    def get_data_directory(self):
+        try:
+            d = get_directory(self.config_constants)
+            self.data_directory_line_edit.setText(d)
+        except (FileNotFoundError, ValueError) as e:
+            print(e)
+
+    def get_results_file(self):
+        try:
+            f, _ = QtWidgets.QFileDialog.getOpenFileName(self, directory=results_directory)
+            self.results_file_line_edit.setText(f)
+        except (FileNotFoundError,) as e:
+            print(e)
+
+    def run_analysis(self, directory):
+        if os.path.isdir(directory):
+            run_analysis(directory, self.config_constants, self.config_variables)
+
+    def analyse_results(self, file):
+        if os.path.isfile(file):
+            analyse_results(file)
+
+
+def run_analysis(parent_directory, config_constants, config_variables):
+
     data_directories = list(pathlib.Path(parent_directory).glob(config_constants["subject_directory_glob"]))
-
-    config_variables = Config(config_variables_file, {"base_config_variables": default_base_config_variables,
-                                                      "config_variable_modifiers": default_config_variable_modifiers})
-
     base_config_variables = config_variables["base_config_variables"]
     config_variable_modifiers = config_variables["config_variable_modifiers"]
 
@@ -96,13 +136,96 @@ def main():
 
     # Save Results -----------------------------------------------------------------------------------------------------
     output = {"config_constants": config_constants, "analysis_configurations": analysis_configurations, "results": results}
-    output_filename = create_unique_timestamped_file_name(directory="results", extension=".pickle")
+    output_filename = create_unique_timestamped_file_name(directory=results_directory, extension=".pickle")
 
     with open(output_filename, "wb") as f:
         pickle.dump(output, f)
     f.close()
 
+    analyse_results(output_filename)
 
+
+def analyse_results(results_filename):
+    with open(results_filename, "rb") as f:
+        data = pickle.load(f)
+    f.close()
+
+    config_constants = data["config_constants"]
+    analysis_configurations = data["analysis_configurations"]
+    results = data["results"]
+
+    test_names = [list(item.values())[0]['name'] for item in analysis_configurations]
+    dirnames = [pathlib.Path(path).name for path in list(results[0])]
+
+    if "linearity" in config_constants["run_tests"]:
+
+        r2s_list = [[item["linearity"]["r_squared"] for _, item in list(result.items())] for result in results]
+        # For each analysis config, create a plot with all the volume vs eit data
+        for i, result in enumerate(results):
+            dfs = [item["linearity"]["df"] for _, item in list(result.items())]
+            fig, ax = plt.subplots()
+            for j, df in enumerate(dfs):
+                # df.plot(x="Volume delta", y="area^1.5_normalized", label=dirnames[j].split(" - ")[0], ax=ax)
+                df.plot(x="Volume delta", y="area^1.5_normalized", label=dirnames[j], ax=ax)
+            ax.set_ylabel("EIT area^1.5 normalized")
+            ax.set_xlabel("Volume delta normalized")
+            ax.set_title(f"EIT vs Volume delta for {len(dirnames)} datasets,\n {test_names[i]}")
+            r2s = [result[key]["linearity"]["r_squared"] for key in result]
+            ax.text(0.3, 0.05, r'Mean $r^2$' + f' = {np.average(r2s):.4f}')
+
+        sems = [stats.sem(r2s) for r2s in r2s_list]
+        ttests = [stats.ttest_ind(r2s_list[0], r2s, equal_var=False) for r2s in r2s_list[1:]]
+        r2means = [np.mean(r2s) for r2s in r2s_list]
+
+        fig, ax = plt.subplots()
+        y_pos = np.arange(len(r2means))
+        ax.barh(y_pos, r2means, align="center", xerr=sems)
+        ax.set_yticks(y_pos)
+        ax.invert_yaxis()
+        test_names_linebreak = []
+        for i, name in enumerate(test_names):
+            test_names_linebreak.append(name.replace(", ", "\n"))
+        ax.set_yticklabels(test_names_linebreak)
+        ax.set_xlim(0, 1)
+        ax.set_xlabel(r'Mean $r^2$')
+        ax.set_ylabel("Analysis Conditions")
+        ax.set_title(r'Mean $r^2$ for EIT Area$^{1.5}$ vs Volume Delta' + "\n (Error Bars Show SEM)")
+        fig.tight_layout()
+
+        for i, ttest in enumerate(ttests):
+            print(f"p-value for t-test between {test_names[0]} and {test_names[i + 1]} is {ttest.pvalue:.4f}")
+
+        stds = [np.std(r2s) for r2s in r2s_list]
+
+        # Calculate ratios between lidar mesh and oval mesh
+        area_ratios = {}
+        for subject in dirnames:
+            df = results[2][subject]['linearity']['df']
+            lidar_area = np.sum(np.isfinite(df["max_pixels"].iloc[0]))
+
+            df_2 = results[0][subject]['linearity']['df']
+            oval_area = np.sum(np.isfinite(df_2["max_pixels"].iloc[0]))
+            area_ratios[subject] = lidar_area / oval_area
+
+        # Calculate error in electrode placement measured by lidar compared to equal spaced
+        electrode_errors = {}
+        for subject in dirnames:
+            lin_result_eq = results[0][subject]['linearity']
+            centroid_eq = lin_result_eq['place_electrodes']['centroid']
+            electrode_positions_eq = lin_result_eq['mesh']['node'][lin_result_eq['electrode_nodes']] - centroid_eq
+            angles_eq = np.arctan(electrode_positions_eq[:, 0] / electrode_positions_eq[:, 1])
+
+            lin_result_lid = results[1][subject]['linearity']
+            centroid_lid = trimesh.Trimesh(lin_result_lid['mesh']['node'], lin_result_lid['mesh']['element']).centroid
+            electrode_positions_lid = lin_result_lid['mesh']['node'][lin_result_lid['electrode_nodes']] - centroid_lid
+            angles_lid = np.arctan(electrode_positions_lid[:, 0] / electrode_positions_lid[:, 1])
+
+            ers = angles_lid - angles_eq
+            electrode_errors[subject] = float(np.mean(np.abs(ers)))
+
+    plt.show()
+
+results_directory = "results/"
 config_file = "../configuration/config_multiple.yaml"
 default_config_constants = {
     "initial_parent_directory": "",
@@ -195,4 +318,10 @@ default_config_variable_modifiers = [
 ]
 
 if __name__ == "__main__":
-    main()
+    app = QtWidgets.QApplication(sys.argv)
+    main_window = MainWindow()
+    main_window.setWindowTitle("Analyse Multiple")
+    dw = QtWidgets.QDesktopWidget()
+
+    main_window.show()
+    app.exec()
