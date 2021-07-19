@@ -1,3 +1,5 @@
+import pandas as pd
+
 from Analysis.analysis_lib import *
 import matplotlib.pyplot as plt
 import matplotlib.figure as figure
@@ -6,6 +8,7 @@ from abi_pyeit.plotting import create_plot, create_image_plot, update_image_plot
 import math
 import matplotlib.animation as animation
 from config_lib import Config
+from scipy.fft import rfft, rfftfreq
 
 
 def main():
@@ -20,7 +23,9 @@ def main():
             background = load_oeit_data(background_filename)
         else:
             background = None
-        data = load_oeit_data(data_filename)
+        data = pd.read_csv(data_filename, index_col=0, low_memory=False).dropna(how="all")
+        data.index = pd.to_datetime(data.index, unit=ABI_EIT_time_unit)
+        data.index = data.index - data.index[0]
     except (ValueError, FileNotFoundError):
         print("Error loading files")
         exit(1)
@@ -32,30 +37,54 @@ def main():
 
     solve_keys = ["normalize"]
     solve_kwargs = {k: config["eit_configuration"][k] for k in solve_keys if k in config["eit_configuration"]}
-    eit_images = [pyeit_obj.solve(frame, background[0], **solve_kwargs) for frame in data]
+    eit_images = [pyeit_obj.solve(parse_oeit_line(frame), background[0], **solve_kwargs) for frame in data["EIT"]]
 
+    # Volume calculations ----------------------------------
     recon_render = render_reconstruction(pyeit_obj.mesh, eit_images)
 
     volume, threshold_images = calculate_eit_volume(pd.Series(data=recon_render), config["eit_configuration"]["image_threshold_proportion"])
+    data["Volume"] = volume
+
+    sample_freq = 5.5
+
+    volume_df = pd.DataFrame(data["Volume"])
+
+    volume_df["Volume High Pass"] = filter_data(volume_df["Volume"], fs=sample_freq, fc=0.1, how="high")
+
+    vol_fft = rfft(volume_df["Volume High Pass"].values)
+    vol_fft_freq = rfftfreq(len(volume_df), 1/sample_freq)
+
+    # Plot Volume ----------------------------------------------------------
+    fig, ax = plt.subplots()
+    ax.plot(volume_df.index.total_seconds(), volume_df["Volume"])
+    ax.set_title("EIT Volume vs time")
+    ax.set_xlabel("Time (s)")
 
     fig, ax = plt.subplots()
-    ax.plot(volume)
+    ax.plot(volume_df.index.total_seconds(), volume_df["Volume High Pass"])
+    ax.set_title("EIT Volume high pass vs time (cuttoff 0.1Hz)")
+    ax.set_xlabel("Time (s)")
 
-    # Create animated plot
-    fig, _ = plt.subplots()
 
-    ani = animation.FuncAnimation(fig, update_plot, frames=len(eit_images), interval=181, repeat_delay=500,
-                                  fargs=(fig, eit_images, pyeit_obj, {"vmax": np.max(eit_images), "vmin": np.min(eit_images)}))
+    fig, ax = plt.subplots()
+    ax.plot(vol_fft_freq, np.abs(vol_fft))
+    ax.set_title("EIT Volume FFT")
+    ax.set_xlabel("Frequency (Hz)")
 
-    fig, _ = plt.subplots()
-    ani2 = animation.FuncAnimation(fig, update_image_plot, frames=len(threshold_images), interval=181, repeat_delay=500,
-                                   fargs=(fig, [i.T for i in threshold_images], {"title": "Threshold Image Plot"}))
-
-    # Save gif
-    writer = animation.PillowWriter(fps=int(1000/181))
-    if not os.path.exists(results_directory):
-        os.mkdir(results_directory)
-    ani.save(results_directory+result_filename, writer, dpi=1000)
+    # Create animated -----------------------------------------------------------------------------------
+    # fig, _ = plt.subplots()
+    # ani = animation.FuncAnimation(fig, update_plot, frames=len(eit_images), interval=181, repeat_delay=500,
+    #                               fargs=(fig, eit_images, pyeit_obj, {"vmax": np.max(eit_images), "vmin": np.min(eit_images)}))
+    #
+    # fig, _ = plt.subplots()
+    # ani2 = animation.FuncAnimation(fig, update_image_plot, frames=len(threshold_images), interval=181, repeat_delay=500,
+    #                                fargs=(fig, [i.T for i in threshold_images], {"title": "Threshold Image Plot"}))
+    #
+    # # Save gif
+    # writer = animation.PillowWriter(fps=int(1000/181))
+    # if not os.path.exists(results_directory):
+    #     os.mkdir(results_directory)
+    # ani.save(results_directory+result_filename, writer, dpi=1000)
 
     plt.show()
 

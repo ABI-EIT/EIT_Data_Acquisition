@@ -333,9 +333,9 @@ def find_last_test_start_and_stop(data, test_name, start_label="Start", stop_lab
 
 
 # # Support code for volume calculations -------------------------------------------------------------------------------
-def filter_data(column, fs=1000, fc=50):
+def filter_data(column, fs=1000, fc=50, order=5, how="low"):
     w = fc / (fs / 2)  # Normalize the frequency
-    b, a = signal.butter(5, w, 'low')
+    b, a = signal.butter(order, w, how)
 
     filtered = signal.filtfilt(b, a, column)
     return filtered
@@ -427,7 +427,13 @@ def venturi_pressure_to_flow(pressure, multiplier):
     return flow
 
 
-def squash_and_resample(data, freq_column=None, resample_freq_hz=1000, output=None, no_pad_columns=None):
+def squash_and_resample(data, freq_column=None, resample_freq_hz=1000, output=None, no_pad_columns=None, interpolate=False):
+    # Todo: The squashing is necessary but I don't think it's actually advisable to do the resampling.
+    #   It can definitely mess with filtering and fft analysis. If we want to know the average frequency we can estimate
+    #   it using the calculation below. For the integration, we can input the index, so we don't need a constatn dx
+
+    if no_pad_columns is None:
+        no_pad_columns = []
     # For each column, group by repeated index and take the first non na.
     # This "squashes" data where each row contains data from only one column, but data from two different columns
     #   could have the same timestamp
@@ -446,11 +452,18 @@ def squash_and_resample(data, freq_column=None, resample_freq_hz=1000, output=No
     # Fillna fixes the opposite issue to the "squashing". Columns are recorded each with their own timestamp, so we need to
     # fill the gaps to get rows with all columns
     pad_cols = [col for col in data.columns if col not in no_pad_columns]
-    data[pad_cols] = data[pad_cols].fillna(method="pad")
+    if not interpolate:
+        data[pad_cols] = data[pad_cols].fillna(method="pad")
+    else:
+        data[pad_cols] = data[pad_cols].interpolate()
 
     # Resample so we have a constant frequency which make further processing nicer
-    data = data.resample(pd.to_timedelta(1 / resample_freq_hz, unit="s")).first()
-    data[pad_cols] = data[pad_cols].pad()
+    if not interpolate:
+        data = data.resample(pd.to_timedelta(1 / resample_freq_hz, unit="s")).first()
+        data[pad_cols] = data[pad_cols].pad()
+    else:
+        data = data.resample(pd.to_timedelta(1 / resample_freq_hz, unit="s")).first()
+        data[pad_cols] = data[pad_cols].interpolate()
     return data
 
 
