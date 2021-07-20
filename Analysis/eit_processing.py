@@ -80,16 +80,16 @@ def initialize_eit(conf, electrode_placement="equal_spacing", eit_type="JAC", ca
     return pyeit_obj
 
 
-def render_reconstruction(mesh, reconstruction_series, mask_mesh=None):
+def render_reconstruction(mesh, reconstruction_series, mask_mesh=None, resolution=(1000, 1000)):
     bounds = [
         (np.min(mesh["node"][:, 0]), np.min(mesh["node"][:, 1])),
         (np.max(mesh["node"][:, 0]), np.max(mesh["node"][:, 1]))
     ]
 
     if mask_mesh is not None:
-        image = model_inverse_uv(mask_mesh, resolution=(1000, 1000), bounds=bounds)
+        image = model_inverse_uv(mask_mesh, resolution=resolution, bounds=bounds)
     else:
-        image = model_inverse_uv(mesh, resolution=(1000, 1000), bounds=bounds)
+        image = model_inverse_uv(mesh, resolution=resolution, bounds=bounds)
 
     recon_render = [map_image(image, np.array(row)) for row in reconstruction_series]
 
