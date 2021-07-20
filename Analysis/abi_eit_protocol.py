@@ -1,12 +1,13 @@
 import pandas as pd
 from Analysis.analysis_lib import rsquared, filter_data, squash_and_resample
-from Analysis.eit_processing import render_reconstruction, calculate_eit_volume
+from Analysis.eit_processing import render_reconstruction, calculate_eit_volume, initialize_eit
 from Analysis.venturi_flow import calculate_volume, infer_flow_direction, venturi_pressure_to_flow
 from abi_pyeit.app.utils import *
 from abi_pyeit.mesh.utils import *
 from config_lib import Config
 from itertools import count
 from config_lib.utils import cached_caller
+
 
 """
 abi_eit_protocol.py contains methods for parsing and preprocessing data from our EIT test protocols. It also contains
@@ -89,31 +90,10 @@ def linearity_test(data, test_config, test_ginput, eit_config, dataset_config, o
         test_data = test_data[test_data["Volume delta"] <= test_config["analysis_max"]]
 
     # Process EIT ------------------------------------------------------------------------------------------------------
-    mesh = load_stl(eit_config["mesh_filename"])
     mask_mesh = load_stl(eit_config["mask_filename"]) if eit_config["mask_filename"] is not None else None
+    initialize_output = {}
+    pyeit_obj = initialize_eit(eit_config, eit_config["electrode_placement"], output_obj=initialize_output)
 
-    # Place electrodes
-    place_e_output = {}
-    if eit_config["electrode_placement"] == "equal_spacing_with_chest_and_spine_gap":
-        electrode_nodes = place_electrodes_equal_spacing(mesh, n_electrodes=eit_config["n_electrodes"],
-                                                         starting_angle=eit_config["starting_angle"],
-                                                         counter_clockwise=eit_config["counter_clockwise"],
-                                                         chest_and_spine_ratio=eit_config["chest_and_spine_ratio"],
-                                                         output_obj=place_e_output)
-    elif eit_config["electrode_placement"] == "lidar":
-        electrode_points = pd.read_csv(eit_config["electrode_points_filename"], header=None)
-        electrode_nodes = map_points_to_perimeter(mesh, points=np.array(electrode_points), map_to_nodes=True)
-    else:
-        raise ValueError("Invalid entry for the \"electrode_placement\" field")
-
-    ex_mat = eit_scan_lines(eit_config["n_electrodes"], eit_config["dist"])
-
-    # Create pyeit object
-    if not cache_pyeit_obj:
-        pyeit_obj = JAC(mesh, np.array(electrode_nodes), ex_mat, step=1, perm=1)
-    else:
-        pyeit_obj = cached_caller(JAC, str, mesh, np.array(electrode_nodes), ex_mat, step=1, perm=1)
-    pyeit_obj.setup(p=eit_config["p"], lamb=eit_config["lamb"], method=eit_config["method"])
 
     # Solve EIT data
     test_data["solution"] = test_data.apply(lambda row: np.real(pyeit_obj.solve(v1=parse_oeit_line(row["EIT In"]),
@@ -121,7 +101,7 @@ def linearity_test(data, test_config, test_ginput, eit_config, dataset_config, o
                                             axis=1)
 
     # Render from solution (mesh + values) to nxn image
-    test_data["recon_render"] = render_reconstruction(mesh, test_data["solution"], mask_mesh)
+    test_data["recon_render"] = render_reconstruction(pyeit_obj.mesh, test_data["solution"], mask_mesh)
 
     test_data["area^1.5_normalized"], test_data["threshold_image"] = calculate_eit_volume(test_data["recon_render"], eit_config["image_threshold_proportion"])
     test_data["max_pixels"] = np.sum(np.isfinite(test_data["threshold_image"].iloc[0]))
@@ -134,9 +114,9 @@ def linearity_test(data, test_config, test_ginput, eit_config, dataset_config, o
 
     out["df"] = test_data
     out["r_squared"] = r_squared
-    out["mesh"] = mesh
-    out["electrode_nodes"] = electrode_nodes
-    out["place_electrodes"] = place_e_output
+    out["mesh"] = pyeit_obj.mesh
+    out["electrode_nodes"] = initialize_output["electrode_nodes"]
+    out["place_electrodes"] = initialize_output["place_e_output"]
 
     return test_data
 

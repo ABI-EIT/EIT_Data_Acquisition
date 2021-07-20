@@ -1,6 +1,83 @@
 import numpy as np
 from Analysis.analysis_lib import lambda_max
 from abi_pyeit.eit.render import model_inverse_uv, map_image, calc_absolute_threshold_set
+from abi_pyeit.mesh.utils import load_mesh, load_stl, load_permitivities, place_electrodes_equal_spacing, \
+    map_points_to_perimeter
+from abi_pyeit.eit.jac import JAC
+from abi_pyeit.eit.utils import eit_scan_lines
+from config_lib.utils import cached_caller
+
+
+def initialize_eit(conf, electrode_placement="equal_spacing", eit_type="JAC", cache_pyeit_obj=True, output_obj=None):
+    """
+    Create and setup an EIT object using a configuration dict
+
+    Parameters
+    ----------
+    conf:
+        Flat configuration dict specifying all required args:
+            electrode_placement:
+                equal_spacing:
+                    n_electrodes, starting_angle, counter_clockwise, chest_and_spine_ratio
+                from_file:
+                    electrode_points_filename
+            scan_lines:
+                n_electrodes, dist
+            eit_type:
+                JAC:
+                    init: step, perm, jac_normalized, parser
+                    setup: p, lamb, method
+    electrode_placement:
+        equal_spacing
+        from_file
+    eit_type
+        JAC (only JAC is supported right now)
+
+    Returns
+    -------
+    pyeit_obj
+
+    """
+    if output_obj is None:
+        output_obj = {}
+
+    mesh = load_mesh(conf["mesh_filename"])
+
+    place_e_output = {}
+    if electrode_placement == "equal_spacing":
+        # Make all keys optional for place_electrodes_equal_spacing
+        place_e_keys = ["n_electrodes", "starting_angle", "counter_clockwise", "chest_and_spine_ratio"]
+        place_e_kwargs = {k: conf[k] for k in place_e_keys if k in conf}
+        electrode_nodes = place_electrodes_equal_spacing(mesh, **place_e_kwargs, output_obj=place_e_output)
+    elif electrode_placement == "from_file":
+        electrode_points = np.genfromtxt(conf["electrode_points_filename"], delimiter=",")
+        electrode_nodes = map_points_to_perimeter(mesh, points=np.array(electrode_points), map_to_nodes=True)
+    else:
+        raise ValueError("Invalid entry for the \"electrode_placement\" field")
+
+    # Make all keys optional for eit_scan_lines
+    scan_lines_keys_map = {"n_electrodes": "ne", "dist": "dist"}
+    scan_lines_kwargs = {v: conf[k] for k, v in scan_lines_keys_map.items() if k in conf}
+    ex_mat = eit_scan_lines(**scan_lines_kwargs)
+
+    if eit_type == "JAC":
+        # Make all keys optional for JAC and setup
+        jac_keys = ["step", "perm", "jac_normalized", "parser"]
+        jac_kwargs = {k: conf[k] for k in jac_keys if k in conf}
+        if not cache_pyeit_obj:
+            pyeit_obj = JAC(mesh, np.array(electrode_nodes), ex_mat, **jac_kwargs)
+        else:
+            pyeit_obj = cached_caller(JAC, str, mesh, np.array(electrode_nodes), ex_mat, **jac_kwargs)
+        setup_keys = ["p", "lamb", "method"]
+        setup_kwargs = {k: conf[k] for k in setup_keys if k in conf}
+        pyeit_obj.setup(**setup_kwargs)
+    else:
+        raise ValueError(f"EIT type {eit_type} not implemented")
+
+    output_obj["electrode_nodes"] = electrode_nodes
+    output_obj["place_e_output"] = place_e_output
+
+    return pyeit_obj
 
 
 def render_reconstruction(mesh, reconstruction_series, mask_mesh=None):
