@@ -2,7 +2,7 @@ from Analysis.abi_eit_protocol import *
 from config_lib import Config
 from pandas.core.common import flatten
 from tqdm import tqdm
-from deepmerge import merge_or_raise
+from deepmerge import always_merger
 from copy import deepcopy
 from PyQt5 import QtWidgets, uic
 import sys
@@ -71,7 +71,7 @@ def run_analysis(parent_directory, config_constants, config_variables):
         subject_configs = {}
         for directory in data_directories:
             config = deepcopy(base_config_variables)
-            merge_or_raise.merge(config, modifier)
+            always_merger.merge(config, modifier)
             for key in config:
                 if isinstance(config[key], dict):
                     # 1 level deep in the config_variables, construct subject specific paths if specified in dict
@@ -173,6 +173,12 @@ def analyse_results(results_filename):
             r2s = [result[key]["linearity"]["r_squared"] for key in result]
             ax.text(0.3, 0.05, r'Mean $r^2$' + f' = {np.average(r2s):.4f}')
 
+            # Calculate mean sensitivities (slope) for each test
+            sensitivities = [item["linearity"]["poly1d"].coefficients[0] for _, item in list(result.items())]
+            mean_sensitivity = np.mean(sensitivities)
+            stdev_sensitivity = np.std(sensitivities)
+            print(f"For test {test_names[i]}, mean_sensitivity is {mean_sensitivity}, stdev is {stdev_sensitivity}")
+
         sems = [stats.sem(r2s) for r2s in r2s_list]
         ttests = [stats.ttest_ind(r2s_list[0], r2s, equal_var=False) for r2s in r2s_list[1:]]
         r2means = [np.mean(r2s) for r2s in r2s_list]
@@ -197,31 +203,31 @@ def analyse_results(results_filename):
 
         stds = [np.std(r2s) for r2s in r2s_list]
 
-        # Calculate ratios between lidar mesh and oval mesh
-        area_ratios = {}
-        for subject in dirnames:
-            df = results[2][subject]['linearity']['df']
-            lidar_area = np.sum(np.isfinite(df["max_pixels"].iloc[0]))
-
-            df_2 = results[0][subject]['linearity']['df']
-            oval_area = np.sum(np.isfinite(df_2["max_pixels"].iloc[0]))
-            area_ratios[subject] = lidar_area / oval_area
-
-        # Calculate error in electrode placement measured by lidar compared to equal spaced
-        electrode_errors = {}
-        for subject in dirnames:
-            lin_result_eq = results[0][subject]['linearity']
-            centroid_eq = lin_result_eq['place_electrodes']['centroid']
-            electrode_positions_eq = lin_result_eq['mesh']['node'][lin_result_eq['electrode_nodes']] - centroid_eq
-            angles_eq = np.arctan(electrode_positions_eq[:, 0] / electrode_positions_eq[:, 1])
-
-            lin_result_lid = results[1][subject]['linearity']
-            centroid_lid = trimesh.Trimesh(lin_result_lid['mesh']['node'], lin_result_lid['mesh']['element']).centroid
-            electrode_positions_lid = lin_result_lid['mesh']['node'][lin_result_lid['electrode_nodes']] - centroid_lid
-            angles_lid = np.arctan(electrode_positions_lid[:, 0] / electrode_positions_lid[:, 1])
-
-            ers = angles_lid - angles_eq
-            electrode_errors[subject] = float(np.mean(np.abs(ers)))
+        # # Calculate ratios between lidar mesh and oval mesh
+        # area_ratios = {}
+        # for subject in dirnames:
+        #     df = results[2][subject]['linearity']['df']
+        #     lidar_area = np.sum(np.isfinite(df["max_pixels"].iloc[0]))
+        #
+        #     df_2 = results[0][subject]['linearity']['df']
+        #     oval_area = np.sum(np.isfinite(df_2["max_pixels"].iloc[0]))
+        #     area_ratios[subject] = lidar_area / oval_area
+        #
+        # # Calculate error in electrode placement measured by lidar compared to equal spaced
+        # electrode_errors = {}
+        # for subject in dirnames:
+        #     lin_result_eq = results[0][subject]['linearity']
+        #     centroid_eq = lin_result_eq['place_electrodes']['centroid']
+        #     electrode_positions_eq = lin_result_eq['mesh']['node'][lin_result_eq['electrode_nodes']] - centroid_eq
+        #     angles_eq = np.arctan(electrode_positions_eq[:, 0] / electrode_positions_eq[:, 1])
+        #
+        #     lin_result_lid = results[1][subject]['linearity']
+        #     centroid_lid = trimesh.Trimesh(lin_result_lid['mesh']['node'], lin_result_lid['mesh']['element']).centroid
+        #     electrode_positions_lid = lin_result_lid['mesh']['node'][lin_result_lid['electrode_nodes']] - centroid_lid
+        #     angles_lid = np.arctan(electrode_positions_lid[:, 0] / electrode_positions_lid[:, 1])
+        #
+        #     ers = angles_lid - angles_eq
+        #     electrode_errors[subject] = float(np.mean(np.abs(ers)))
 
     plt.show()
 

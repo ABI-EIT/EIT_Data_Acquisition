@@ -101,7 +101,7 @@ def linearity_test(data, test_config, test_ginput, eit_config, dataset_config, o
                                             axis=1)
 
     # Render from solution (mesh + values) to nxn image
-    test_data["recon_render"] = render_reconstruction(pyeit_obj.mesh, test_data["solution"], mask_mesh)
+    test_data["recon_render"] = render_reconstruction(pyeit_obj.mesh, test_data["solution"], mask_mesh, resolution=(100,100))
 
     test_data["area^1.5_normalized"], test_data["threshold_image"] = calculate_eit_volume(test_data["recon_render"], eit_config["image_threshold_proportion"])
     test_data["max_pixels"] = np.sum(np.isfinite(test_data["threshold_image"].iloc[0]))
@@ -114,6 +114,7 @@ def linearity_test(data, test_config, test_ginput, eit_config, dataset_config, o
 
     out["df"] = test_data
     out["r_squared"] = r_squared
+    out["poly1d"] = f
     out["mesh"] = pyeit_obj.mesh
     out["electrode_nodes"] = initialize_output["electrode_nodes"]
     out["place_electrodes"] = initialize_output["place_e_output"]

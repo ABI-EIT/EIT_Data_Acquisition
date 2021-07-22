@@ -72,7 +72,8 @@ def main():
 
     # Recalculate volume
     recon_render_averaged = render_reconstruction(pyeit_obj.mesh, eit_images_averaged, resolution=(1000, 1000))
-    volume, threshold_images = calculate_eit_volume(pd.Series(data=recon_render_averaged), config["eit_configuration"]["image_threshold_proportion"])
+    # volume, threshold_images = calculate_eit_volume(pd.Series(data=recon_render_averaged), config["eit_configuration"]["image_threshold_proportion"], sensitivity=0.1)
+    volume, threshold_images = calculate_eit_volume(pd.Series(data=recon_render_averaged), config["eit_configuration"]["image_threshold_proportion"], sensitivity=0.1)
     data_grouped["Volume Averaged"] = volume
 
     # Plot Volume ----------------------------------------------------------
