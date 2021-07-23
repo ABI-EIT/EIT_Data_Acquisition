@@ -37,7 +37,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def get_data_directory(self):
         try:
-            d = get_directory(self.config_constants)
+            d = self.config_constants.get_directory(remember_directory_key="initial_data_directory", prompt="Select a data directory")
             self.data_directory_line_edit.setText(d)
         except (FileNotFoundError, ValueError) as e:
             print(e)

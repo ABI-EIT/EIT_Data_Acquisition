@@ -13,7 +13,7 @@ analyse_single_trial is a script used to analyse the results of a trial based on
 
 def main():
     config = Config(config_path, default_config, type="yaml")
-    filename = get_filename(config)
+    filename = config.get_filename(remember_directory_key="initial_data_directory", prompt="Select a data file")
     parse_relative_paths(config["eit_configuration"], alternate_working_directory=str(pathlib.Path(pathlib.Path(filename).parent)), awd_indicator="data_directory")
 
     data, dataset_config = read_and_preprocess_data(filename, config["dataset_config_glob"], config["resample_freq_hz"])

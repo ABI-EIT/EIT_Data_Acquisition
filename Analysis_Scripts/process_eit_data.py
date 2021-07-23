@@ -17,13 +17,13 @@ def main():
 
     # Load data and background with file select dialogs
     try:
-        data_filename = get_filename(config, key="data")
+        data_filename = config.get_filename(remember_directory_key="initial_data_directory", prompt="Select a data file")
         data = pd.read_csv(data_filename, index_col=0, low_memory=False).dropna(how="all")
         data.index = pd.to_datetime(data.index, unit=ABI_EIT_time_unit)
         data.index = data.index - data.index[0]
         data["EIT"] = [parse_oeit_line(row)for row in data["EIT"]]
         if config["background_type"] == "file":
-            background_filename = get_filename(config, key="background", remember_directory=False)
+            background_filename = get_filename(initial_directory=config["initial_data_directory"], prompt="Select a background file")
             config["initial_background_directory"] = config["initial_data_directory"]
             background = load_oeit_data(background_filename)[0]
         elif config["background_type"] == "max_magnitude":

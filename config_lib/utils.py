@@ -70,66 +70,31 @@ def get_input(data, show_columns, test_name):
     return points
 
 
-def get_filename(config=None, key="data", remember_directory=True):
-    # Todo: we probably should put the config stuff in a separate function.
-    return _get_filename_or_directory(config=config, key=key, which="filename", remember_directory=remember_directory)
+def get_filename(initial_directory=None, prompt="Select a file"):
+    return _get_filename_or_directory(which="filename", initial_directory=initial_directory, prompt=prompt)
 
 
-def get_directory(config=None, key="data", remember_directory=True):
-    return _get_filename_or_directory(config=config, key=key, which="directory", remember_directory=remember_directory)
+def get_directory(initial_directory=None, prompt="Select a directory"):
+    return _get_filename_or_directory(which="directory", initial_directory=initial_directory, prompt=prompt)
 
 
-def _get_filename_or_directory(config=None, key="data", which="filename", remember_directory=True):
-    """
-    Finds a filename by asking the user through a Tk file select dialog.
-    If remember_directory is set to True, the directory is remembered for next time
-    If the filename key exists in the input config, this is used instead of the dialog
+def _get_filename_or_directory(which="filename", initial_directory=None, prompt=None):
 
-    Parameters
-    ----------
-    config
-    key
-    which
-    remember_directory
+    Tk().withdraw()  # we don't want a full GUI, so keep the root window from appearing
+    try:
+        if which == "filename":
+            item = askopenfilename(initialdir=initial_directory, title=prompt)
+        else:
+            item = askdirectory(initialdir=initial_directory, title=prompt)
 
-    Returns
-    -------
-    item
-        config or directory name
+    except FileNotFoundError:
+        raise
 
-    """
-    if config is not None and key in config:
-        item = config[key]  # Secret option to not get dialog
-    else:
-        Tk().withdraw()  # we don't want a full GUI, so keep the root window from appearing
-        try:
-            initial_dir = None
-            if config is not None and f"initial_{key}_directory" in config:
-                initial_dir = config[f"initial_{key}_directory"]
+    if item == "" or item == ():
+        error_message = f"Invalid {which} selection"
+        raise ValueError(error_message)
 
-            if which == "filename":
-                item = askopenfilename(initialdir=initial_dir, title=f"Select {key} file")
-            else:
-                item = askdirectory(initialdir=initial_dir, title=f"Select {key} directory")
-
-        except FileNotFoundError:
-            raise
-
-        if item == "" or item == ():
-            error_message = f"Invalid {which} selection"
-            raise ValueError(error_message)
-
-        if config is not None and remember_directory:
-            if which == "directory":
-                directory = item
-            else:
-                directory = str(pathlib.Path(item).parent)
-
-            if f"initial_{key}_directory" not in config or directory != config[f"initial_{key}_directory"]:
-                config[f"initial_{key}_directory"] = directory
-                config.save()
-
-        return item
+    return item
 
 
 def parse_relative_paths(input_dict, alternate_working_directory, awd_indicator="alternate", path_tag="filename",

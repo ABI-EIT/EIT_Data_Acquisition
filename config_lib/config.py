@@ -2,7 +2,7 @@ import yaml
 import json
 import os
 import pathlib
-
+from config_lib.utils import get_filename, get_directory
 
 class Config:
     """
@@ -50,4 +50,59 @@ class Config:
 
     def __contains__(self, item):
         return item in self.config
+
+    def get_filename(self, remember_directory_key, prompt=None):
+        """
+        Get a filename using a file select dialog. Remember the directory for next time.
+        Note: If remembering the directory is not desired, use config_lib.utils:get_filename
+
+        Parameters
+        ----------
+        remember_directory_key
+        prompt
+
+        Returns
+        -------
+
+        """
+        # Create kwargs for get_filename. Use prompt if given, else don't include it so default gets used.
+        # Use initial directory if it exists
+        kwargs = {"prompt": prompt} if prompt is not None else {}
+        kwargs["initial_directory"] = self[remember_directory_key] if remember_directory_key in self else None
+        f = get_filename(**kwargs)
+        d = str(pathlib.Path(f).parent)
+
+        # If selected filename's directory if different from what we remember, remember the new one
+        if remember_directory_key in self and self[remember_directory_key] != d:
+            self[remember_directory_key] = d
+            self.save()
+
+        return f
+
+    def get_directory(self, remember_directory_key, prompt=None):
+        """
+        Get a directory using a file select dialog. Remember the directory for next time.
+        Note: If remembering the directory is not desired, use config_lib.utils:get_directory
+
+        Parameters
+        ----------
+        remember_directory_key
+        prompt
+
+        Returns
+        -------
+
+        """
+        # Create kwargs for get_filename. Use prompt if given, else don't include it so default gets used.
+        # Use initial directory if it exists
+        kwargs = {"prompt": prompt} if prompt is not None else {}
+        kwargs["initial_directory"] = self[remember_directory_key] if remember_directory_key in self else None
+        d = get_directory(**kwargs)
+
+        # If selected directory if different from what we remember, remember the new one
+        if remember_directory_key in self and self[remember_directory_key] != d:
+            self[remember_directory_key] = d
+            self.save()
+
+        return d
 
