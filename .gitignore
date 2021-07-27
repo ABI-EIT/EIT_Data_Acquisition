@@ -13,3 +13,6 @@ abi_eit_analysis.egg-info/
 
 configuration/
 results/
+
+# Sphinx documentation
+_build/
