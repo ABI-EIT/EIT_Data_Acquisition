@@ -1,7 +1,7 @@
 import numpy as np
-from Analysis.analysis_lib import lambda_max
+from abi_eit_analysis.analysis_lib import lambda_max
 from abi_pyeit.eit.render import model_inverse_uv, map_image, calc_absolute_threshold_set
-from abi_pyeit.mesh.utils import load_mesh, load_stl, load_permitivities, place_electrodes_equal_spacing, \
+from abi_pyeit.mesh.utils import load_mesh, place_electrodes_equal_spacing, \
     map_points_to_perimeter
 from abi_pyeit.eit.jac import JAC
 from abi_pyeit.eit.utils import eit_scan_lines

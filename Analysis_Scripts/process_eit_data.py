@@ -1,12 +1,11 @@
-from Analysis.abi_eit_protocol import *
+from abi_eit_analysis import *
 import matplotlib.pyplot as plt
 from abi_pyeit.app.utils import *
-from abi_pyeit.plotting import create_mesh_plot, update_image_plot, update_plot, create_plot
+from abi_pyeit.plotting import create_plot
 from config_lib import Config
 from scipy.fft import rfft, rfftfreq
-from Analysis.eit_processing import initialize_eit
+from abi_eit_analysis import initialize_eit
 from config_lib.utils import get_filename, parse_relative_paths
-import matplotlib.animation as animation
 
 """
 process_eit_data.py is a script used to process a series of EIT frames

@@ -1,7 +1,7 @@
 import numpy as np
 from scipy import integrate
 
-from Analysis.analysis_lib import lambda_max
+from abi_eit_analysis.analysis_lib import lambda_max
 
 
 def calculate_volume(flow, x=None, dx=0.001, flow_threshold=0.02):

@@ -1,4 +1,4 @@
-from Analysis.abi_eit_protocol import *
+from abi_eit_analysis import *
 from config_lib import Config
 from pandas.core.common import flatten
 from tqdm import tqdm
@@ -7,7 +7,7 @@ from copy import deepcopy
 from PyQt5 import QtWidgets, uic
 import sys
 import matplotlib.pyplot as plt
-from config_lib.utils import get_input, get_directory, parse_relative_paths, create_unique_timestamped_file_name
+from config_lib.utils import get_input, parse_relative_paths, create_unique_timestamped_file_name
 from scipy import stats
 
 """

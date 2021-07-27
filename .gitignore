@@ -9,6 +9,7 @@ pyeit.egg-info/
 venv/
 /data
 examples/data
+abi_eit_analysis.egg-info/
 
 configuration/
 results/

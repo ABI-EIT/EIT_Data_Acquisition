@@ -1,10 +1,10 @@
-from Analysis.abi_eit_protocol import *
+from abi_eit_analysis import *
 import matplotlib.pyplot as plt
 from abi_pyeit.app.utils import *
 from abi_pyeit.plotting import create_mesh_plot, update_image_plot
 import matplotlib.animation as animation
 from config_lib import Config
-from config_lib.utils import get_input, get_filename, parse_relative_paths
+from config_lib.utils import get_input, parse_relative_paths
 
 """
 analyse_single_trial is a script used to analyse the results of a trial based on our EIT + Venturi Spirometry test procedure.
