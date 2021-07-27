@@ -2,10 +2,19 @@ from PyQt5.QtCore import (QAbstractItemModel, QFile, QIODevice,
         QItemSelectionModel, QModelIndex, Qt)
 
 
-class TreeItem(object):
-    def __init__(self, data, parent=None):
+class DictTreeItem(object):
+    """
+    DictTreeItem is used to build a heirarchical tree structure of items to make up the data in TreeModel.
+    It represents a dict while implementing part of the QAbstractItemModel interface.
+    Each DictTreeItem stores a key representing a key in the underlying dict, plus a reference to the parent item.
+    For the purposes of the model/view architecture, the key is stored in column 0. The corresponding value is
+    accessed via a request for the data in column 1. The value is retrieved from the underlying dict using the
+    key plus a recursive search of the parent keys.
+    """
+    def __init__(self, data: dict, key: str=None, parent=None):
+        self.dict_data = data
         self.parentItem = parent
-        self.itemData = data
+        self.itemKey = key
         self.childItems = []
 
     def child(self, row):
@@ -22,21 +31,22 @@ class TreeItem(object):
         return 0
 
     def columnCount(self):
-        return len(self.itemData)
+        return 2
 
     def data(self, column):
-        if column < 0 or column >= len(self.itemData):
+        if column < 0 or column > self.columnCount()-1 or self.parent() is None:
             return None
-        return self.itemData[column]
+        elif column == 0:
+            return self.itemKey
+        elif column == 1:
+            return self.get_dict_item(self.itemKey, self.parent())
 
-    def insertChildren(self, position, count, columns):
+    def insertChild(self, position, data_dict, key):
         if position < 0 or position > len(self.childItems):
             return False
 
-        for row in range(count):
-            data = [None for v in range(columns)]
-            item = TreeItem(data, self)
-            self.childItems.insert(position, item)
+        item = DictTreeItem(data_dict, key, self)
+        self.childItems.insert(position, item)
 
         return True
 
@@ -51,13 +61,19 @@ class TreeItem(object):
 
         return True
 
+    @staticmethod
+    def get_dict_item(key, item: "DictTreeItem"):
+        if item.parent() is None:
+            return item.dict_data[key]
+        else:
+            return item.get_dict_item(item.data(0), item.parent())[key]
+
 
 class TreeModel(QAbstractItemModel):
-    def __init__(self, headers, data, parent=None):
+    def __init__(self, data, parent=None):
         super(TreeModel, self).__init__(parent)
 
-        rootData = [header for header in headers]
-        self.rootItem = TreeItem(rootData)
+        self.rootItem = DictTreeItem(data=data, key=None, parent=None)
         self.setupModelData(data, self.rootItem)
 
     def columnCount(self, parent=QModelIndex()):
@@ -146,13 +162,9 @@ class TreeModel(QAbstractItemModel):
     def setupModelData(self, data, parent):
 
         for key, value in data.items():
-            parent.insertChildren(parent.childCount(), 1,
-                                  self.rootItem.columnCount())
+            parent.insertChild(parent.childCount(), data, key)
 
-            child = parent.child(parent.childCount() - 1)
-            child.setData(0, key)
-            if not isinstance(value, dict):
-                child.setData(1, value)
-            else:
+            if isinstance(value, dict):
+                child = parent.child(parent.childCount() - 1)
                 self.setupModelData(value, child)
 

@@ -57,15 +57,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         self.setupUi(self)
 
-        headers = ("Key", "Value")
-
-        file = QFile("data.json")
-        file.open(QIODevice.ReadOnly)
-
         with open("data.json", "r") as f:
             data = json.load(f)
 
-        model = TreeModel(headers, data)
+        model = TreeModel(data)
 
         self.view.setModel(model)
         for column in range(model.columnCount()):
