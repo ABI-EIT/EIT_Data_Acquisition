@@ -44,9 +44,10 @@
 
 from PyQt5.QtCore import (QAbstractItemModel, QFile, QIODevice,
         QItemSelectionModel, QModelIndex, Qt)
-from PyQt5.QtWidgets import QApplication, QMainWindow
-from PyQt5 import uic
+from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QItemEditorFactory
+from PyQt5 import uic, QtWidgets
 from tree_model import TreeModel
+from math import ceil
 import json
 Ui_MainWindow, QMainWindow = uic.loadUiType("mainwindow.ui")
 
@@ -62,9 +63,71 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         model = TreeModel(data)
 
-        self.view.setModel(model)
-        for column in range(model.columnCount()):
-            self.view.resizeColumnToContents(column)
+        view = DictView(model=model)
+
+        layout = QtWidgets.QVBoxLayout()
+        layout.addWidget(view)
+        self.centralwidget.setLayout(layout)
+
+
+class DictView(QWidget):
+    def __init__(self, model=None, parent=None, cols=None):
+        super(DictView, self).__init__(parent)
+        self.model = model
+
+        # Build layout from settings
+        layout_kwargs = {} if cols is None else {"cols": cols}
+        form_layout = self.build_layout(**layout_kwargs)
+
+        layout = QtWidgets.QVBoxLayout()
+        layout.addLayout(form_layout)
+        self.setLayout(layout)
+
+    def set_model(self, model: TreeModel):
+        self.model = model
+        self.model.dataChanged.connect(self.update_view)
+
+    def update_view(self):
+        pass
+
+    def get_model_items_flat(self, item_index):
+        for i in range(self.model.getItem(item_index).childCount()):
+            child_index = self.model.index(i, 0, parent=item_index)
+            key = self.model.data(child_index)
+            value = self.model.data(child_index)
+            return [(key, value), *self.get_model_items_flat(child_index)]
+
+        return []
+
+    def get_editor(self, value):
+        return QItemEditorFactory.defaultFactory().createEditor(type(value), QWidget())
+
+    def build_layout(self, cols=2):
+
+        items = self.get_model_items_flat(QModelIndex())
+
+        h_layout = QtWidgets.QHBoxLayout()
+        forms = [QtWidgets.QFormLayout() for _ in range(cols)]
+        for form in forms:
+            h_layout.addLayout(form)
+
+        num_items = len(items)
+        for i, (key, value) in enumerate(items):
+            # Find which column to put the setting in. Columns are filled equally, with remainder to the left. Each column
+            # is filled before proceeding to the next.
+            f_index = 0
+            for j in range(cols):
+                if (i + 1) <= ceil((j + 1) * num_items / cols):
+                    f_index = j
+                    break
+
+            # input_widget = self.get_editor(value)
+            input_widget = QtWidgets.QLineEdit(str(value))
+
+            label = QtWidgets.QLabel(key)
+            forms[f_index].addRow(label, input_widget)
+
+        return h_layout
 
 
 if __name__ == '__main__':

@@ -79,7 +79,7 @@ class TreeModel(QAbstractItemModel):
     def columnCount(self, parent=QModelIndex()):
         return self.rootItem.columnCount()
 
-    def data(self, index, role):
+    def data(self, index, role=Qt.DisplayRole):
         if not index.isValid():
             return None
 
