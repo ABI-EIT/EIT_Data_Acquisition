@@ -87,6 +87,7 @@ Below is a description of the settings available for use with abi_eit_analysis, 
         "starting_angle": 0,
         "counter_clockwise": true,
         "mask_filename": null
+    },
     "linearity": {
         "analysis_max": -1,
         "normalize_volume": "VC"
