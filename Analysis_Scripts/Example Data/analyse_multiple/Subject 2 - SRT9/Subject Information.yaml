@@ -1,0 +1,24 @@
+Gender: M
+Age: 30
+Height (cm): 178
+Weight (kg): 77
+
+VC:
+- 6.46
+- 6.11
+- 6.11
+FVC:
+- 6.19
+- 6.11
+- 6.17
+FEV1:
+- 5.06
+- 5.00
+- 5.00
+
+Flow1_multiplier: 0.09847950291  # Calibrated value
+Flow2_multiplier: -0.09799102959 # Calibrated value
+Flow1_sensor_orientation: -1
+Flow2_sensor_orientation: 1
+Flow1_offset: 0
+Flow2_offset: 0

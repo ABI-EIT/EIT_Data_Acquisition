@@ -282,7 +282,7 @@ default_config_variable_modifiers = [
         "name": "Oval Chest, Generic Electrodes",
         "eit_configuration": {
             "mesh_filename": "mesh/oval_chest_3.stl",
-            "electrode_placement": "equal_spacing_with_chest_and_spine_gap"
+            "electrode_placement": "equal_spacing"
         }
     }
     ,
@@ -299,7 +299,7 @@ default_config_variable_modifiers = [
     {
         "name": "Subject Lidar Chest, Generic Electrodes",
         "eit_configuration": {
-            "electrode_placement": "equal_spacing_with_chest_and_spine_gap",
+            "electrode_placement": "equal_spacing",
             "mesh_filename_wd": "data_directory",
             "mesh_filename": "Lidar Mesh_s.STL",
         },
