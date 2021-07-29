@@ -1,11 +1,13 @@
 from abi_eit_analysis import *
 import matplotlib.pyplot as plt
 from abi_pyeit.app.utils import *
-from abi_pyeit.plotting import create_plot
+from abi_pyeit.plotting import create_plot, update_plot
 from config_lib import Config
 from scipy.fft import rfft, rfftfreq
 from abi_eit_analysis import initialize_eit
 from config_lib.utils import get_filename, parse_relative_paths
+from matplotlib import animation
+
 
 """
 process_eit_data.py is a script used to process a series of EIT frames
@@ -20,6 +22,7 @@ def main():
         data = pd.read_csv(data_filename, index_col=0, low_memory=False).dropna(how="all")
         data.index = pd.to_datetime(data.index, unit=ABI_EIT_time_unit)
         data.index = data.index - data.index[0]
+        data = data.dropna(subset=["EIT"])
         data["EIT"] = [parse_oeit_line(row)for row in data["EIT"]]
         if config["background_type"] == "file":
             background_filename = get_filename(initial_directory=config["initial_data_directory"], prompt="Select a background file")
@@ -27,10 +30,11 @@ def main():
             background = load_oeit_data(background_filename)[0]
         elif config["background_type"] == "max_magnitude":
             background = data["EIT"].iloc[data["EIT"].apply(lambda row: row[0]).argmax()]
+            background = data["EIT"].dropna().iloc[data["EIT"].dropna().apply(lambda row: row[0]).argmax()]
         else:
             background = None
-    except (ValueError, FileNotFoundError):
-        print("Error loading files")
+    except (ValueError, FileNotFoundError) as e:
+        print("Error loading files: " + str(e))
         exit(1)
     # Initialize EIT
     parse_relative_paths(config["eit_configuration"], alternate_working_directory=str(pathlib.Path(pathlib.Path(data_filename).parent)), awd_indicator="data_directory")
@@ -102,7 +106,7 @@ def main():
     create_plot(ax, image, eit_obj=pyeit_obj, vmin=np.min(image), vmax=np.max(image))
 
     fig, ax = plt.subplots()
-    image = eit_images_averaged[data_grouped["Volume"].argmax()]
+    image = eit_images_averaged[data_grouped["Volume Averaged"].argmax()]
     create_plot(ax, image, eit_obj=pyeit_obj, vmin=np.min(image), vmax=np.max(image), title="EIT (averaged) plot")
 
 
@@ -136,7 +140,8 @@ result_filename = "result.gif"
 config_file = r"configuration/process_eit.json"
 config_path = config_file
 default_config = {
-    "background_type": "file",
+    "background_type": "max_magnitude",
+    "initial_data_directory":"",
     "eit_configuration": {
         # "mesh_filename_wd": "data_directory",
         "mesh_filename": "mesh/oval_chest_3.stl",
