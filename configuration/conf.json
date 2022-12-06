@@ -1,7 +1,7 @@
 {
   "setup": {
     "p": 0.5,
-    "lamb": 0.4,
+    "lamb": 0.05,
     "method": "kotre"
   },
   "solve_type": "solve",

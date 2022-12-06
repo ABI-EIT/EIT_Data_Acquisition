@@ -1,0 +1,24 @@
+{
+  "type": "JAC",
+  "parser":"std",
+  "electrodes": {
+    "number": 16,
+    "starting_angle": 0.0,
+    "starting_offset": 0.0,
+    "counter_clockwise": true
+  },
+  "ex_mat": {
+    "type": "scan_lines",
+    "dist": 3,
+    "step": 1
+  },
+  "setup": {
+    "p": 0.5,
+    "lamb": 0.05,
+    "method": "kotre"
+  },
+
+  "solve_type": "solve",
+  "normalize": false
+
+}

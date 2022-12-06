@@ -1,5 +1,4 @@
 import sys
-import numpy as np
 from PyQt5 import QtWidgets, uic
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_qt5agg import (
@@ -8,41 +7,30 @@ from matplotlib.backends.backend_qt5agg import (
 )
 import matplotlib
 import matplotlib.pyplot
-from mpl_toolkits.axes_grid1 import make_axes_locatable
-from pyeit.mesh.utils import *
 import time
 from background_process_workers import *
 from Toaster import Toaster
 from PyQt5.QtGui import QIcon
-from adv_prodcon import put_in_queue
 from pyeit.visual.plot import create_plot
-import pickle
 from eit import setup_eit
 
-Ui_MainWindow, QMainWindow = uic.loadUiType("layout/eit_with_dual_flow.ui")
+Ui_MainWindow, QMainWindow = uic.loadUiType("layout/layout.ui")
 
-default_mesh = "configuration/mesha06_bumpychestslice_flipped.STL"
+default_mesh = "configuration/circle_phantom_mesh_no_inclusion.stl"
 default_conf = "configuration/conf.json"
 default_eit_setup = "configuration/eit_setup.json"
-spectra_configuration = {
+device_configuration = {
     "baud": 115200,
     "frame_start_char": "m",
     "read_timeout": 10000,
     "read_termination_char": "\n",
     "encoding": "latin-1"
 }
-flow_configuration = {
-    "baud": 500000,
-    "frame_start_char": None,
-    "read_timeout": 10000,
-    "read_termination_char": "\n",
-    "encoding": "utf-8"
-}
 data_saving_configuration = {
     "directory": "data/",
     "format": "%Y-%m-%dT%H_%M_eit",
     "default_suffix": "data",
-    "columns": ["Time", "Tag", "Flow", "EIT"],
+    "columns": ["Time", "EIT"],
     "timestamp_format": "raw",
     "delimiter": ",",
     "extension": ".csv",
@@ -53,90 +41,23 @@ spectra_data_format = {
     "prefix": "magnitudes:        ",
     "separator": ",       "
 }
-flow_plot_config = {
-    "buffer": 10000,
-    "slope": 1,
-    "offset": 0,
-    "min_range": 2
-}
-
-
-
-bidirectional_venturi_config = {
-    "sensor_orientations": [-1, 1],  # Orientation of pressure sensor. 1 for positive reading from air flow in correct direction through venturi tube
-    "Flow1_multiplier": 0.09912976335,
-    "Flow2_multiplier": -0.09640041172,
-    "Pressure1_offset": 0.007,
-    "Pressure2_offset": -0.028,
-    "flow_threshold": 0.02,
-    "sampling_freq_hz": 1000,
-    "cutoff_freq": 50,
-    "order": 5,
-    "use_filter": True,
-}
-
-test_names = ["Test 1", "Test 2", "Test 3", "Test 4"]
-
-
-class TestButton(QtWidgets.QPushButton):
-    def __init__(self, *args, **kwargs):
-        self.name = kwargs.pop("name")
-        self.queue = kwargs.pop("queue")
-        super().__init__(*args, **kwargs)
-        self.setText("Start " + self.name)
-        self.setCheckable(True)
-        self.clicked.connect(self.react_to_click)
-        self.started_before = False
-
-    def react_to_click(self):
-        if self.isChecked():
-            if self.started_before:
-                message_box = QtWidgets.QMessageBox(text=("Are you sure you want to start {0} again?".format(self.name)))
-                message_box.setWindowTitle("Warning")
-                message_box.setStandardButtons(QtWidgets.QMessageBox.Ok | QtWidgets.QMessageBox.Cancel)
-                message_box.buttonClicked.connect(lambda button: (self.start() if button.text() == "OK" else self.setChecked(False)))
-                message_box.exec()
-            else:
-                self.started_before = True
-                self.start()
-        else:
-            put_in_queue(self.queue, {"tag": "Tag", "data": "Stop " + self.name, "timestamp": time()})
-            Toaster.showMessage(self, "%s stop time recorded" % self.name)
-            self.setText("Start " + self.name)
-
-    def start(self):
-        put_in_queue(self.queue, {"tag": "Tag", "data": "Start " + self.name, "timestamp": time()})
-        Toaster.showMessage(self, "%s start time recorded" % self.name)
-        self.setText("Stop " + self.name)
-
 
 class MainWindow(QMainWindow, Ui_MainWindow):
     def __init__(self):
         super(MainWindow, self).__init__()
         self.first_plot = True
-        self.first_flow_plot = True
         self.setupUi(self)
         self.canvas = None
         self.plot_axes = None
-        self.flow_canvas = None
-        self.flow_plot_axes = None
-        self.flow_combo_box = self.comboBoxFlow1
         self.populate_devices()
         self.eit_reader = Reader(tag="EIT")
-        self.flow_reader = Reader(tag="Flow")  # Tags used for saving AND to refer to calibration in venturi config dict
-        self.volume_calc = BidirectionalVenturiFlowCalculator(work_timeout=.1, buffer_size=1000)
         self.eit_processor = EITProcessor()
         self.data_saver = DataSaver()
         self.conf = default_conf
         self.eit_setup = default_eit_setup
         self.initial_background = None
         self.color_axis = None
-        self.test_buttons = []
         self.eit_scale = (np.inf, np.NINF)  # ymin, ymax
-        self.breathe_labels = (self.inLabel, self.holdLabel1, self.outLabel, self.holdLabel2, self.restLabel)
-        self.first_breathe_label_index = 4
-        self.breathe_label_count = -1
-        self.settings_window = SettingsWindow(None)
 
         self.comboBox.currentTextChanged.connect(self.change_eit_device)
         self.startRecordingButton.clicked.connect(
@@ -145,59 +66,18 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         self.eit_obj = self.initialize_eit_obj(default_mesh, self.eit_setup)
         self.eit_reader.new_data.connect(
-            lambda result: (self.textEdit.append(result["data"]),
-                            self.FrameCountCountLabel.setText(str(int(self.FrameCountCountLabel.text())+1)),
-                            self.increment_breathe_labels()))
+            lambda result: (self.textEdit.append(result["data"])))
         self.eit_reader.set_subscribers([self.eit_processor.get_work_queue(), self.data_saver.get_work_queue()])
         self.eit_reader.on_connect_failed = self.eit_connect_failed
 
         self.set_background_button.clicked.connect(self.set_background)
         self.clear_background_button.clicked.connect(lambda: self.eit_processor.set_background(None))
 
-        self.flow_combo_box.currentTextChanged.connect(lambda text: self.change_flow_device(text))
-
-        self.flow_reader.set_subscribers([self.volume_calc.get_work_queue(), self.data_saver.get_work_queue()])
-        self.flow_reader.on_connect_failed = lambda: self.flow_connect_failed()
-        self.volume_calc.start_new(work_kwargs={"configuration":bidirectional_venturi_config})
-
-        self.volume_calc.new_data.connect(lambda items: (self.update_flow_plot(items), self.volumeLabel.setText("{0:.2}".format(items[-1]["data"][1]))))
-        self.zeroVolumeButton.clicked.connect(self.volume_calc.set_zero)
-
-        self.populate_test_buttons()
-
-        self.checkBoxScale.stateChanged.connect(lambda state: self.reset_eit_scale() if not state else None)
-
-        self.resetButton.clicked.connect(self.reset_breathe_labels)
-
-        self.settingsButton.clicked.connect(self.settings_window.show)
-        self.settings_window.accepted.connect(lambda: Toaster.showMessage(self, "Accepted"))
-        self.settings_window.rejected.connect(lambda: Toaster.showMessage(self, "Rejected"))
-
         self.start_time = time()
         self.update_ui_state()
 
-    def update_breathe_labels(self):
-        for i, label in enumerate(self.breathe_labels):
-            if i == (self.breathe_label_count + self.first_breathe_label_index) % len(self.breathe_labels) :
-                self.breathe_labels[i].setEnabled(True)
-            else:
-                self.breathe_labels[i].setEnabled(False)
-
-    def reset_breathe_labels(self):
-        self.breathe_label_count = 0
-        self.update_breathe_labels()
-
-    def increment_breathe_labels(self):
-        self.breathe_label_count += 1
-        self.update_breathe_labels()
-
     def reset_eit_scale(self):
         self.eit_scale = (np.inf, np.NINF)
-
-    def flow_connect_failed(self):
-        print("Flow reader connect failed")
-        self.flow_combo_box.setCurrentIndex(0)
-        self.update_ui_state()
 
     def eit_connect_failed(self):
         print("EIT reader connect failed")
@@ -215,16 +95,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.clear_background_button.setEnabled(False)
 
     def update_ui_reader_state(self):
-        if self.flow_reader.get_state() == Reader.started or \
-           self.eit_reader.get_state() == Reader.started:
+        if self.eit_reader.get_state() == Reader.started:
             self.startRecordingButton.setEnabled(True)
         else:
             self.startRecordingButton.setEnabled(False)
-
-    def populate_test_buttons(self):
-        self.test_buttons = [TestButton(name=name, queue=self.data_saver.get_work_queue(), enabled=False) for name in test_names]
-        for button in self.test_buttons:
-            self.testButtonsLayout.addWidget(button)
 
     def set_background(self):
         current_frame = self.eit_processor.get_current_frame()
@@ -243,10 +117,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.data_saver.start_new(work_kwargs={"suffix": suffix, "configuration": data_saving_configuration})
 
         self.comboBox.setEnabled(False)
-        self.comboBoxFlow1.setEnabled(False)
         self.dataFileSuffixTextEdit.setEnabled(False)
-        for button in self.test_buttons:
-            button.setEnabled(True)
 
         message = "Started recording"  # +" in: " + self.data_saver.get_filename()
         Toaster.showMessage(self, message)
@@ -256,12 +127,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.startRecordingButton.setVisible(True)
 
         self.comboBox.setEnabled(True)
-        self.comboBoxFlow1.setEnabled(True)
         self.dataFileSuffixTextEdit.setEnabled(True)
-
-        for button in self.test_buttons:
-            button.setEnabled(False)
-            button.setChecked(False)
 
         self.data_saver.set_stop_at_queue_end()
 
@@ -280,18 +146,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.plot_axes = self.canvas.figure.subplots()
         toolbar = NavigationToolbar(self.canvas, self.canvas, coordinates=True)
 
-        self.verticalLayoutEIT.addWidget(self.canvas)
-        self.verticalLayoutEIT.addWidget(toolbar)
+        self.verticalLayout_5.addWidget(self.canvas)
+        self.verticalLayout_5.addWidget(toolbar)
 
-    def add_flow_plot(self):
-        self.placeholderWidgetVolume.setVisible(False)
-
-        self.flow_canvas = FigureCanvas(matplotlib.figure.Figure())
-        self.flow_plot_axes = self.flow_canvas.figure.subplots()
-        toolbar = NavigationToolbar(self.flow_canvas, self.flow_canvas, coordinates=True)
-
-        self.verticalLayoutVolume.addWidget(self.flow_canvas)
-        self.verticalLayoutVolume.addWidget(toolbar)
 
     def update_eit_plot(self, eit_image, pyeit_obj):
         if self.first_plot:
@@ -305,71 +162,15 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         vmin = min(eit_image)
         vmax = max(eit_image)
-        if self.checkBoxScale.checkState():
-            vmin = min((vmin, self.eit_scale[0]))
-            vmax = max((vmax, self.eit_scale[1]))
-            self.eit_scale = (vmin, vmax)
 
         img, text, _ = create_plot(ax, eit_image,  pyeit_obj.mesh, vmax=vmax, vmin=vmin)
         self.canvas.draw_idle()
         return img, text
 
-    def parse_flow_data(self, items):
-        data_list = []
-        time_list = []
-        for item in items:
-            try:
-                data = float(item["data"][1])
-                time = float(item["timestamp"]) - float(self.start_time)
-            except ValueError:
-                continue
-            data_list.append(data)
-            time_list.append(time)
-
-        data_list = np.multiply(data_list, flow_plot_config["slope"])
-        data_list = np.add(data_list, flow_plot_config["offset"])
-        return data_list, time_list
-
-    def update_flow_plot(self, items):
-        new_data, new_times = self.parse_flow_data(items)
-        if self.first_flow_plot:
-            self.add_flow_plot()
-            self.first_flow_plot = False
-            data = [0]
-            times = [0]
-        else:
-            data = self.flow_plot_axes.lines[0].get_ydata()
-            times = self.flow_plot_axes.lines[0].get_xdata()
-
-        nd = [element for i, element in enumerate(new_data) if new_times[i] > times[-1]]
-        nt = [element for i, element in enumerate(new_times) if new_times[i] > times[-1]]
-        new_data = nd
-        new_times = nt
-
-        self.flow_plot_axes.clear()
-
-        data = np.append(data, new_data)
-        data = data[-1 * flow_plot_config["buffer"]:]
-
-        times = np.append(times, new_times)
-        times = times[-1 * flow_plot_config["buffer"]:]
-
-        self.flow_plot_axes.plot(times, data)
-        ylim = self.flow_plot_axes.get_ylim()
-        range = ylim[1] - ylim[0]
-        range_min = flow_plot_config["min_range"]
-        if range < range_min:
-            self.flow_plot_axes.set_ylim((ylim[0]-((range_min-range)/2)), ylim[1]+((range_min-range)/2))
-
-        self.flow_plot_axes.figure.canvas.draw()
-
     def populate_devices(self):
         self.comboBox.addItems(["None"])
         self.comboBox.addItems(Reader.list_devices())
         self.comboBox.setCurrentIndex(0)
-        self.comboBoxFlow1.addItems(["None"])
-        self.comboBoxFlow1.addItems(Reader.list_devices())
-        self.comboBoxFlow1.setCurrentIndex(0)
 
     def change_eit_device(self, text):
         if text == "":
@@ -385,62 +186,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.set_background_button.setEnabled(True)
         self.clear_background_button.setEnabled(True)
 
-        self.eit_reader.start_new(work_kwargs={"device_name": text, "configuration": spectra_configuration})
+        self.eit_reader.start_new(work_kwargs={"device_name": text, "configuration": device_configuration})
 
         self.update_ui_state()
-
-    def change_flow_device(self, text):
-        if text == "":
-            return
-        if text == "None":
-            if self.flow_reader.get_state() == Reader.started:
-                self.flow_reader.set_stopped()
-                self.update_ui_state()
-                return
-        self.flow_reader.start_new(work_kwargs={"device_name": text, "configuration": flow_configuration})
-        self.update_ui_state()
-
-
-class SettingsWindow(QtWidgets.QDialog):
-
-    def __init__(self, config):
-        super().__init__()
-        self.setModal(True)
-
-        self.buttons = QtWidgets.QDialogButtonBox()
-        self.buttons.setStandardButtons(QtWidgets.QDialogButtonBox.Save | QtWidgets.QDialogButtonBox.Cancel)
-        self.buttons.buttons()[0].clicked.connect(self.accept)
-        self.buttons.buttons()[1].clicked.connect(self.reject)
-
-        self.form1 = QtWidgets.QFormLayout()
-        self.form1.addRow("Row1", QtWidgets.QTextEdit())
-        self.form1.addRow("Row2", QtWidgets.QDial())
-
-        lw = QtWidgets.QListWidget()
-        item = QtWidgets.QListWidgetItem("Hello")
-        item.setFlags(item.flags() | QtCore.Qt.ItemIsEditable)
-        lw.addItem(item)
-
-        self.form1.addRow("Row3", lw)
-
-        self.tab = QtWidgets.QTabWidget()
-        tab1 = QtWidgets.QWidget()
-        tab1.setLayout(self.form1)
-        self.tab.addTab(tab1, "Tab1")
-        self.tab.addTab(QtWidgets.QWidget(), "Tab2")
-
-        self.vbox = QtWidgets.QVBoxLayout(self)
-        self.vbox.addWidget(self.tab)
-        self.vbox.addWidget(self.buttons)
-
-        self.setLayout(self.vbox)
-
-        #  TODO: Create layout from config
-
-    def showEvent(self, event):
-        super().showEvent(event)
-
-        # TODO: Populate forms from config
 
 
 if __name__ == '__main__':
