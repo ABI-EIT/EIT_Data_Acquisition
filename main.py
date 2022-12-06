@@ -9,18 +9,21 @@ from matplotlib.backends.backend_qt5agg import (
 import matplotlib
 import matplotlib.pyplot
 from mpl_toolkits.axes_grid1 import make_axes_locatable
-from abi_pyeit.app.utils import *
+from pyeit.mesh.utils import *
 import time
 from background_process_workers import *
 from Toaster import Toaster
 from PyQt5.QtGui import QIcon
 from adv_prodcon import put_in_queue
-from abi_pyeit.plotting import create_plot
+from pyeit.visual.plot import create_plot
+import pickle
+from eit import setup_eit
 
 Ui_MainWindow, QMainWindow = uic.loadUiType("layout/eit_with_dual_flow.ui")
 
-default_pickle = "configuration/mesha06_bumpychestslice_pickle_dist3"
+default_mesh = "configuration/mesha06_bumpychestslice_flipped.STL"
 default_conf = "configuration/conf.json"
+default_eit_setup = "configuration/eit_setup.json"
 spectra_configuration = {
     "baud": 115200,
     "frame_start_char": "m",
@@ -125,6 +128,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.eit_processor = EITProcessor()
         self.data_saver = DataSaver()
         self.conf = default_conf
+        self.eit_setup = default_eit_setup
         self.initial_background = None
         self.color_axis = None
         self.test_buttons = []
@@ -139,7 +143,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             lambda: self.start_recording(self.dataFileSuffixTextEdit.text()))
         self.stopRecordingButton.clicked.connect(self.stop_recording)
 
-        self.eit_obj = self.initialize_eit_obj(default_pickle, self.conf)
+        self.eit_obj = self.initialize_eit_obj(default_mesh, self.eit_setup)
         self.eit_reader.new_data.connect(
             lambda result: (self.textEdit.append(result["data"]),
                             self.FrameCountCountLabel.setText(str(int(self.FrameCountCountLabel.text())+1)),
@@ -265,13 +269,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     # This should be in EITProcessor
     @staticmethod
-    def initialize_eit_obj(eit_pickle, conf):
-        conf = load_conf(conf)
-        setup = conf["setup"]
-
-        eit_obj = unpickle_eit(eit_pickle)
-        eit_obj.setup(p=setup["p"], lamb=setup["lamb"], method=setup["method"])
-
+    def initialize_eit_obj(eit_mesh, conf):
+        eit_obj = setup_eit(eit_mesh, conf)
         return eit_obj
 
     def add_eit_plot(self):
@@ -311,7 +310,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             vmax = max((vmax, self.eit_scale[1]))
             self.eit_scale = (vmin, vmax)
 
-        img, text = create_plot(ax, eit_image,  pyeit_obj, vmax=vmax, vmin=vmin)
+        img, text, _ = create_plot(ax, eit_image,  pyeit_obj.mesh, vmax=vmax, vmin=vmin)
         self.canvas.draw_idle()
         return img, text
 

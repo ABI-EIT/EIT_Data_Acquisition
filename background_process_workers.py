@@ -3,7 +3,7 @@ from adv_prodcon import Producer, Consumer
 from multiprocessing import Manager
 import matplotlib.tri as tri
 import threading
-from abi_pyeit.app.utils import load_oeit_data, load_conf, parse_oeit_line, process_frame
+import json
 import os
 from datetime import datetime
 from time import time
@@ -16,6 +16,7 @@ from scipy import signal
 import pandas as pd
 import io
 from multiprocessing import Pipe
+from eit import process_frame, parse_oeit_line, load_conf, load_oeit_data
 
 
 class Reader(Producer, QtCore.QObject):
@@ -309,13 +310,13 @@ class EITProcessor(Consumer, QtCore.QObject):
                     bg_dict["current_frame"] = data
                     eit_image = process_frame(eit_obj, data, conf, background)
 
-                    pts = eit_obj.mesh['node']
-                    triangles = eit_obj.mesh['element']
+                    pts = eit_obj.mesh.node
+                    triangles = eit_obj.mesh.element
                     x = pts[:, 0]
                     y = pts[:, 1]
                     triangulation = tri.Triangulation(x, y, triangles=triangles)
 
-                    electrode_points = [(x[e], y[e]) for e in eit_obj.el_pos]
+                    electrode_points = [(x[e], y[e]) for e in eit_obj.mesh.el_pos]
 
                     results.append((triangulation, eit_image, electrode_points))
 
@@ -413,3 +414,5 @@ class DataSaver(Consumer):
         csv_writer.writerows(output_list)
         file.flush()
         return output_list
+
+
