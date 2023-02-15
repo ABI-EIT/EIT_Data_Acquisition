@@ -1,6 +1,6 @@
 {
   "type": "JAC",
-  "parser":"std",
+  "parser":"fmmu",
   "electrodes": {
     "number": 16,
     "starting_angle": 0.0,

@@ -16,7 +16,7 @@ from eit import setup_eit
 
 Ui_MainWindow, QMainWindow = uic.loadUiType("layout/layout.ui")
 
-default_mesh = "configuration/circle_phantom_mesh_no_inclusion.stl"
+default_mesh = "configuration/mesha06_bumpychestslice_flipped.STL"
 default_conf = "configuration/conf.json"
 default_eit_setup = "configuration/eit_setup.json"
 device_configuration = {
