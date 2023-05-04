@@ -51,8 +51,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.comboBox.currentTextChanged.connect(self.change_eit_device)
 
         self.eit_obj = self.initialize_eit_obj(default_mesh, self.eit_setup)
-        self.eit_reader.new_data.connect(
-            lambda result: (self.textEdit.append(result["data"])))
         self.eit_reader.set_subscribers([self.eit_processor.get_work_queue()])
         self.eit_reader.on_connect_failed = self.eit_connect_failed
 
