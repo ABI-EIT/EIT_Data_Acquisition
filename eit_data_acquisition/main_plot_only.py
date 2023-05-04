@@ -144,7 +144,7 @@ if __name__ == '__main__':
     app = QtWidgets.QApplication(sys.argv)
     main_window = MainWindow()
     main_window.setWindowTitle("ABI EIT")
-    main_window.setWindowIcon(QIcon("layout/lung_icon.png"))
+    main_window.setWindowIcon(QIcon("layout/lung_icon.PNG"))
     dw = QtWidgets.QDesktopWidget()
 
     main_window.resize(dw.availableGeometry(dw).size() * 0.7)

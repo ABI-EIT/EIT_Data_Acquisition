@@ -8,11 +8,12 @@ from matplotlib.backends.backend_qt5agg import (
 import matplotlib
 import matplotlib.pyplot
 import time
-from background_process_workers import *
-from Toaster import Toaster
+from eit_data_acquisition.background_process_workers import *
+from eit_data_acquisition.Toaster import Toaster
 from PyQt5.QtGui import QIcon
 from pyeit.visual.plot import create_plot
-from eit import setup_eit
+from eit_data_acquisition.eit import setup_eit
+import multiprocessing
 
 Ui_MainWindow, QMainWindow = uic.loadUiType("layout/layout.ui")
 
@@ -192,10 +193,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
 
 if __name__ == '__main__':
+    # Pyinstaller fix
+    multiprocessing.freeze_support()
+
     app = QtWidgets.QApplication(sys.argv)
     main_window = MainWindow()
     main_window.setWindowTitle("ABI EIT")
-    main_window.setWindowIcon(QIcon("layout/lung_icon.png"))
+    main_window.setWindowIcon(QIcon("layout/lung_icon.PNG"))
     dw = QtWidgets.QDesktopWidget()
 
     main_window.resize(dw.availableGeometry(dw).size() * 0.7)

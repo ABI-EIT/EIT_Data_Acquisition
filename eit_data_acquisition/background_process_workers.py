@@ -16,7 +16,7 @@ from scipy import signal
 import pandas as pd
 import io
 from multiprocessing import Pipe
-from eit import process_frame, parse_oeit_line, load_conf, load_oeit_data
+from eit_data_acquisition.eit import process_frame, parse_oeit_line, load_conf, load_oeit_data
 
 
 class Reader(Producer, QtCore.QObject):
