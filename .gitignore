@@ -4,7 +4,7 @@ __pycache__/
 .spyproject/
 build/
 dist/
-pyeit.egg-info/
+eit_data_acquisition.egg-info/
 
 venv/
 /data
